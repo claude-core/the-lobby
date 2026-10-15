@@ -14,7 +14,7 @@ const MATCH_SECONDS = 15;
 const $ = id => document.getElementById(id);
 const ui = {
   app: $('app'), clock: $('clock'), vibeFill: $('vibe-fill'), vibeLabel: $('vibe-label'), mute: $('mute'),
-  list: $('friend-list'), friendCount: $('friend-count'), restart: $('btn-restart'),
+  list: $('friend-list'), friendCount: $('friend-count'), restart: $('btn-restart'), feed: $('feed'),
   stage: $('stage'), canvas: $('chars'), slots: $('slots'), banner: $('banner'), readyCheck: $('ready-check'), readyCount: $('ready-count'),
   subs: $('subs'), menu: $('menu'), menuTitle: $('menu-title'), menuSub: $('menu-sub'), menuActions: $('menu-actions'), menuResult: $('menu-result'), menuClose: $('menu-close'),
   title: $('screen-title'), titleDay: $('title-day'), titleTwist: $('title-twist'), titleNext: $('title-next'), start: $('btn-start'),
@@ -29,7 +29,7 @@ const Store = new DailyStore('thelobby_v1', { evenings: 0, matches: 0, longestLo
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const G = { state: 'title', day: 1, mode: 'official', rng: null, t: 0, clock: 0, vibe: 100, friends: {}, lobby: [], subs: [], winT: 0, shake: 0, matchT: 0, matchLine: 0, lobbyMinutes: 0, result: null, bannerT: 0, rcCooldown: 0, log: {} };
+const G = { notices: [], state: 'title', day: 1, mode: 'official', rng: null, t: 0, clock: 0, vibe: 100, friends: {}, lobby: [], subs: [], winT: 0, shake: 0, matchT: 0, matchLine: 0, lobbyMinutes: 0, result: null, bannerT: 0, rcCooldown: 0, log: {} };
 let menuTarget = null;
 
 const skinOf = f => SKIN[f.def.look.skin] || f.def.look.skin;
@@ -50,6 +50,8 @@ function makeFriend(id) {
     patience: def.patience ? def.patience.max : 0, anger: 0, screaming: 0,
     cd: { ping: 0, text: 0, call: 0, calm: 0 }, chatterT: G.rng.range(8, 20), talkT: 0, phase: G.rng.next() * 6.28, blink: 0,
     status: 'Offline', joinedAt: 0, leaves: 0,
+    readyHold: 0, waitT: 0, complainT: 0, mood: 'ok', distractT: G.rng.range(10, 18), falseReady: 0, bubble: '', bubbleKind: '', bubbleT: 0,
+    outburstT: def.outburst ? G.rng.range(def.outburst.every[0], def.outburst.every[1]) : 0, ignoredT: 0,
   };
 }
 
@@ -58,7 +60,7 @@ function startEvening(mode) {
   G.day = Daily.todayNumber();
   G.rng = new Rng(Daily.seedFor(G.day, 0));
   G.t = 0; G.clock = 0; G.vibe = 100; G.winT = 0; G.shake = 0; G.matchT = 0; G.matchLine = 0; G.result = null; G.rcCooldown = 0;
-  G.subs = []; G.log = { leaves: 0, screams: 0, kicks: 0, calls: 0, lines: {} };
+  G.subs = []; G.notices = []; ui.feed.innerHTML = ''; G.log = { leaves: 0, screams: 0, kicks: 0, calls: 0, outbursts: 0, unreadies: 0, lines: {} };
   G.friends = {}; for (const id of ROSTER) G.friends[id] = makeFriend(id);
   G.lobby = new Array(SLOTS).fill(null);
   // Justin is already in the lobby at 9:00pm. He is always in the lobby.
@@ -68,14 +70,21 @@ function startEvening(mode) {
   ui.stage.classList.remove('night', 'match');
   ui.subs.innerHTML = '';
   say(null, 'Party created. Mode: SQUADS. ' + needed() + ' needed.');
-  buildSlots(); renderList(); resize();
+  buildSlots(); buildList(); resize();
 }
 
 // ---------------------------------------------------------------------------
 // Subtitles, banners, toasts
 // ---------------------------------------------------------------------------
+// System events go to the feed in the friends panel so they never cover the voice chat.
+function notice(text) {
+  G.notices.push(text); if (G.notices.length > 3) G.notices.shift();
+  ui.feed.innerHTML = G.notices.map(n => `<div>${esc(n)}</div>`).join('');
+}
 function say(f, text, kind) {
   if (!text) return;
+  if (!f) return notice(text);
+  f.bubble = text; f.bubbleKind = kind || ''; f.bubbleT = 2.8;
   G.subs.push({ who: f ? f.name : null, text, kind: kind || (f ? '' : 'sys'), color: f ? f.def.look.shirt : '' });
   if (G.subs.length > 3) G.subs.shift();
   if (f) { f.talkT = 1.2; G.log.lines[f.id] = (G.log.lines[f.id] || 0) + 1; }
@@ -126,15 +135,40 @@ function leaveLobby(f, reason) {
 }
 function setReady(f, on, quiet) {
   if (f.ready === on) return;
-  f.ready = on;
-  if (on) { if (!quiet) say(f, pick(G.rng, f.def.lines.ready)); G.vibe = clamp(G.vibe + 8, 0, 100); Sfx.tone(990, 0.1, 'sine', 0.15, 1480); }
+  f.ready = on; f.waitT = 0;
+  if (on) { const h = f.def.readyHold || [20, 30]; f.readyHold = G.rng.range(h[0], h[1]) * (1 - 0.2 * f.annoyed);
+    f.falseReady = G.rng.chance(0.18 + 0.12 * f.def.chaos) ? G.rng.range(2, 6) : 0; if (!quiet) say(f, pick(G.rng, f.def.lines.ready)); G.vibe = clamp(G.vibe + 8, 0, 100); Sfx.tone(990, 0.1, 'sine', 0.15, 1480); }
   else { G.winT = 0; if (!quiet) Sfx.tone(300, 0.15, 'square', 0.08, 200); }
+}
+// Someone who was ready gives up waiting: un-readies, complains, and sours the room.
+function giveUp(f) {
+  setReady(f, false, true); G.log.unreadies++;
+  say(f, pick(G.rng, f.def.lines.unready) || 'un-ready', 'complain');
+  f.readyT = G.rng.range(4, 8);
+  if (f.def.patience) f.patience -= 6;
+  G.vibe = clamp(G.vibe - 6, 0, 100);
+  Sfx.tone(320, 0.2, 'square', 0.1, 180);
+  for (const m of lobbyMembers()) if (m !== f) { if (m.ready && m.def.patience) m.patience -= 4; if (m.def.anger) m.anger += 10; }
+}
+function outburst(f) {
+  const o = f.def.outburst;
+  say(f, pick(G.rng, f.def.lines.outburst), 'scream');
+  G.log.outbursts++; f.ignoredT = o.ignoreSeconds; G.shake = Math.max(G.shake, 0.35);
+  G.vibe = clamp(G.vibe - 5, 0, 100);
+  for (const m of lobbyMembers()) if (m !== f) { if (m.def.patience) m.patience -= 8; if (m.def.anger) m.anger += 18; if (m.ready && G.rng.chance(0.5)) { setReady(m, false, true); m.readyT = G.rng.range(3, 6); m.bubble = 'wait what', m.bubbleKind = 'complain', m.bubbleT = 2; } }
+  Sfx.noise(0.25, 0.2, 700, 0.8);
+}
+function ignoredOutburst(f) {
+  say(f, pick(G.rng, f.def.lines.ignored), 'scream');
+  G.shake = Math.max(G.shake, 0.4); G.vibe = clamp(G.vibe - 6, 0, 100);
+  for (const m of lobbyMembers()) if (m !== f) { if (m.def.patience) m.patience -= 6; if (m.def.anger) m.anger += 12; }
 }
 function startScream(f) {
   const a = f.def.anger;
   f.screaming = a.screamSeconds; f.anger = a.max; G.log.screams++;
   say(f, pick(G.rng, f.def.lines.scream), 'scream');
   banner(f.name.toUpperCase() + ' IS SCREAMING', 'bad', 2.5);
+  for (const m of lobbyMembers()) if (m.ready) { setReady(m, false, true); m.readyT = G.rng.range(4, 8); if (m !== f) { m.bubble = '...', m.bubbleKind = 'complain', m.bubbleT = 2; } }
   G.shake = 1; G.vibe = clamp(G.vibe - 12, 0, 100);
   Sfx.noise(0.5, 0.3, 900, 0.8); Sfx.tone(180, 0.6, 'sawtooth', 0.2, 120);
 }
@@ -164,8 +198,30 @@ function tick(dt) {
     if (!f.online && G.clock >= f.onlineAt) setOnline(f);
     if (f.invitePending > 0) { f.invitePending -= dt; if (f.invitePending <= 0) { f.invitePending = 0; if (!joinLobby(f)) f.status = 'Online'; } }
     if (!f.inLobby) continue;
-    // readying up
+    f.bubbleT = Math.max(0, f.bubbleT - dt);
+    // readying up, and getting antsy once ready
     if (!f.ready) { f.readyT -= dt; if (f.readyT <= 0) setReady(f, true); }
+    else if (f.falseReady > 0) { f.falseReady -= dt; if (f.falseReady <= 0) { giveUp(f); continue; } }
+    else if (anyNotReady || members.length < needed()) {
+      f.waitT += dt; f.readyHold -= dt;
+      f.complainT -= dt;
+      if (f.complainT <= 0 && f.waitT > 4) { f.complainT = G.rng.range(6, 10); say(f, pick(G.rng, f.def.lines.wait), 'complain'); }
+      if (f.readyHold <= 0) { giveUp(f); continue; }
+    }
+    // periodic distractions, more for chaotic friends
+    f.distractT -= dt;
+    if (f.distractT <= 0) { f.distractT = G.rng.range(12, 22); if (f.ready && G.rng.chance(0.12 * f.def.chaos)) { giveUp(f); continue; } }
+    // mood from patience
+    if (f.def.patience) {
+      const low = f.patience < 35;
+      if (low && f.mood !== 'annoyed') { f.mood = 'annoyed'; say(f, pick(G.rng, f.def.lines.annoyed), 'complain'); }
+      else if (!low && f.mood === 'annoyed') f.mood = 'ok';
+    }
+    // Andre-style outbursts that must be acknowledged
+    if (f.def.outburst) {
+      if (f.ignoredT > 0) { f.ignoredT -= dt; if (f.ignoredT <= 0) { ignoredOutburst(f); f.outburstT = G.rng.range(f.def.outburst.every[0], f.def.outburst.every[1]); } }
+      else { f.outburstT -= dt; if (f.outburstT <= 0) outburst(f); }
+    }
     // patience
     if (f.def.patience) {
       let drain = f.def.patience.drain * (f.ready ? 1.3 : 0.8);
@@ -193,8 +249,9 @@ function tick(dt) {
   }
 
   // party vibe
-  let drain = 0.45;
+  let drain = 0.6;
   if (members.length && !members.some(m => m.ready)) drain += 1.1;
+  if (members.some(m => m.mood === 'annoyed')) drain += 0.7;
   if (!members.length) drain += 0.5;
   G.vibe -= drain * dt;
   if (G.vibe <= 0) { G.vibe = 0; return endEvening('vibe'); }
@@ -250,6 +307,8 @@ function showResult() {
   html += `<div class="row"><span>😤 Justin screamed</span><span>×${r.log.screams}</span></div>`;
   html += `<div class="row"><span>🚪 People left the party</span><span>×${r.log.leaves}</span></div>`;
   html += `<div class="row"><span>🦶 Kicks</span><span>×${r.log.kicks}</span></div>`;
+  html += `<div class="row"><span>📢 Andre outbursts</span><span>×${r.log.outbursts}</span></div>`;
+  html += `<div class="row"><span>🔴 People un-readied</span><span>×${r.log.unreadies}</span></div>`;
   if (mostLines) html += `<div class="row"><span>🎙️ Most talkative</span><span>${FRIENDS[mostLines[0]].name} (${mostLines[1]} lines)</span></div>`;
   ui.resultBody.innerHTML = html;
   ui.resultNext.textContent = Daily.debug ? 'Debug evening — not saved' : 'Phase 1 build — results are not saved yet';
@@ -263,52 +322,70 @@ const ACTIONS = {
   invite: { label: 'Invite', hint: 'to the party', cls: 'primary', can: f => f.online && !f.inLobby && f.invitePending <= 0 && freeSlot() >= 0 && f.reinviteT <= 0,
     run: f => { invite(f); return f.name + ' invited. Now we wait.'; } },
   ping: { label: 'Ping', hint: 'free, weak', can: f => f.inLobby && f.cd.ping <= 0,
-    run: f => { f.cd.ping = 4; f.readyT -= 2; if (f.def.anger) f.anger += 4; say(f, pick(G.rng, f.def.lines.ping)); Sfx.tone(1200, 0.05, 'square', 0.1); return 'Pinged ' + f.name + '. A grunt was heard.'; } },
+    run: f => { f.cd.ping = 4; f.readyT -= 2; f.readyHold += 4; if (f.def.anger) f.anger += 4; say(f, pick(G.rng, f.def.lines.ping)); Sfx.tone(1200, 0.05, 'square', 0.1); return 'Pinged ' + f.name + '. A grunt was heard.'; } },
   text: { label: 'Text "chillllll"', hint: 'medium · 20s cooldown', can: f => f.inLobby && f.cd.text <= 0,
-    run: f => { f.cd.text = 20; f.readyT -= 4; if (f.def.patience) f.patience = clamp(f.patience + 12, 0, f.def.patience.max); if (f.def.anger) f.anger = clamp(f.anger - 10, 0, 100); say(f, pick(G.rng, f.def.lines.text)); return f.name + ' read it. Left on read, but read.'; } },
+    run: f => { f.cd.text = 20; f.readyT -= 4; f.readyHold += 10; f.waitT = 0; if (f.def.patience) f.patience = clamp(f.patience + 12, 0, f.def.patience.max); if (f.def.anger) f.anger = clamp(f.anger - 10, 0, 100); say(f, pick(G.rng, f.def.lines.text)); return f.name + ' read it. Left on read, but read.'; } },
   call: { label: 'Call', hint: 'strong · annoys everyone else', can: f => f.inLobby && f.cd.call <= 0,
-    run: f => { f.cd.call = 30; f.readyT = Math.min(f.readyT, 1); G.log.calls++; if (f.def.patience) f.patience = clamp(f.patience + 6, 0, f.def.patience.max);
+    run: f => { f.cd.call = 30; f.readyT = Math.min(f.readyT, 0.5); f.readyHold += 15; f.waitT = 0; G.log.calls++; if (f.def.patience) f.patience = clamp(f.patience + 6, 0, f.def.patience.max);
       for (const m of lobbyMembers()) if (m !== f) { if (m.def.patience) m.patience -= 8; if (m.def.anger) m.anger += 10; }
       say(f, pick(G.rng, f.def.lines.call)); Sfx.tone(700, 0.12, 'sine', 0.12); Sfx.tone(700, 0.12, 'sine', 0.12, 0, 0.25); return 'Called ' + f.name + '. Everyone else heard it ring.'; } },
   calm: { label: 'Calm down, Justin', hint: 'lowers anger', cls: 'fix', can: f => f.inLobby && !!f.def.anger && f.cd.calm <= 0,
     run: f => { f.cd.calm = 8; calmDown(f); return 'Justin took a breath. One breath.'; } },
+  listen: { label: "I'm listening, Andre", hint: 'ends the outburst', cls: 'fix', can: f => f.inLobby && !!f.def.outburst && f.ignoredT > 0,
+    run: f => { f.ignoredT = 0; f.outburstT = G.rng.range(f.def.outburst.every[0], f.def.outburst.every[1]); say(f, pick(G.rng, f.def.lines.listened)); if (f.def.patience) f.patience = clamp(f.patience + 10, 0, f.def.patience.max); G.vibe = clamp(G.vibe + 4, 0, 100); return 'Andre feels heard. For now.'; } },
   kick: { label: 'Kick', hint: 'frees the slot', cls: 'danger', can: f => f.inLobby,
     run: f => {
       if (f.def.neverLeaves) { f.anger = clamp(f.anger + 25, 0, 100); say(f, f.def.lines.kicked, 'scream'); banner(f.name + ' instantly rejoined', 'bad', 1.8); G.shake = 0.5; return 'Kick failed. He was back before the button finished animating.'; }
       leaveLobby(f, 'kicked'); return f.name + ' kicked. He will remember this.'; } },
 };
-const ACTION_ORDER = ['invite', 'ping', 'text', 'call', 'calm', 'kick'];
+const ACTION_ORDER = ['invite', 'ping', 'text', 'call', 'calm', 'listen', 'kick'];
 
+let menuButtons = [], menuSig = '';
+function menuSignature(f) { return [f.inLobby, !!f.def.anger, !!f.def.outburst].join('|'); }
 function openMenu(f) {
   if (G.state !== 'playing') return;
   menuTarget = f;
   ui.menuResult.textContent = '';
-  renderMenu();
+  buildMenu(); updateMenu();
   ui.menu.classList.remove('hidden');
 }
-function renderMenu() {
+// Built once per open and updated in place: rebuilding buttons every frame
+// swallowed taps on touch screens.
+function buildMenu() {
   const f = menuTarget; if (!f) return;
+  menuSig = menuSignature(f);
   ui.menuTitle.textContent = f.name;
+  ui.menuActions.innerHTML = ''; menuButtons = [];
+  for (const key of ACTION_ORDER) {
+    const a = ACTIONS[key];
+    if (key === 'calm' && !f.def.anger) continue;
+    if (key === 'listen' && !f.def.outburst) continue;
+    if (key === 'invite' && f.inLobby) continue;
+    if (key !== 'invite' && !f.inLobby) continue;
+    const b = document.createElement('button'); b.type = 'button'; b.className = a.cls || '';
+    b.innerHTML = `${a.label}<small></small>`;
+    b.addEventListener('click', e => { e.preventDefault(); if (!a.can(f)) return; ui.menuResult.textContent = a.run(f); updateMenu(); });
+    ui.menuActions.appendChild(b);
+    menuButtons.push({ key, el: b, small: b.querySelector('small'), lastSmall: '', lastDisabled: null });
+  }
+}
+function updateMenu() {
+  const f = menuTarget; if (!f) return;
+  if (menuSignature(f) !== menuSig) buildMenu();
   const bits = [f.status];
   if (f.inLobby) bits.push(f.ready ? 'READY' : 'not ready');
   if (f.def.patience && f.inLobby) bits.push('patience ' + Math.round(f.patience) + '%');
   if (f.def.anger) bits.push('anger ' + Math.round(f.anger) + '%');
   if (f.annoyed) bits.push('annoyed ×' + f.annoyed);
-  ui.menuSub.textContent = bits.join(' · ');
-  ui.menuActions.innerHTML = '';
-  for (const key of ACTION_ORDER) {
-    const a = ACTIONS[key];
-    if (key === 'calm' && !f.def.anger) continue;
-    if (key === 'invite' && f.inLobby) continue;
-    if (key !== 'invite' && !f.inLobby) continue;
-    const b = document.createElement('button'); b.type = 'button';
-    b.className = a.cls || '';
-    const cdKey = key === 'text' ? 'text' : key === 'call' ? 'call' : key === 'ping' ? 'ping' : key === 'calm' ? 'calm' : null;
-    const cd = cdKey ? f.cd[cdKey] : 0;
-    b.innerHTML = `${a.label}<small>${cd > 0 ? 'cooldown ' + Math.ceil(cd) + 's' : a.hint}</small>`;
-    b.disabled = !a.can(f);
-    b.addEventListener('click', e => { e.preventDefault(); if (!a.can(f)) return; ui.menuResult.textContent = a.run(f); renderMenu(); renderList(); });
-    ui.menuActions.appendChild(b);
+  const sub = bits.join(' · ');
+  if (ui.menuSub.textContent !== sub) ui.menuSub.textContent = sub;
+  for (const mb of menuButtons) {
+    const a = ACTIONS[mb.key];
+    const cd = f.cd[mb.key] || 0;
+    const small = cd > 0 ? 'cooldown ' + Math.ceil(cd) + 's' : (mb.key === 'listen' ? Math.ceil(f.ignoredT) + 's to answer' : a.hint);
+    if (small !== mb.lastSmall) { mb.lastSmall = small; mb.small.textContent = small; }
+    const dis = !a.can(f);
+    if (dis !== mb.lastDisabled) { mb.lastDisabled = dis; mb.el.disabled = dis; }
   }
 }
 function closeMenu() { ui.menu.classList.add('hidden'); menuTarget = null; }
@@ -340,22 +417,35 @@ function statusText(f) {
   if (f.reinviteT > 0) return 'Just left (' + Math.ceil(f.reinviteT) + 's)';
   return f.online ? 'Online' : 'Offline';
 }
-function renderList() {
-  ui.friendCount.textContent = lobbyMembers().length + '/' + needed() + ' in party';
+const listRows = {};
+function buildList() {
   ui.list.innerHTML = '';
   for (const id of ROSTER) {
     const f = G.friends[id];
     const li = document.createElement('li');
-    const dot = f.inLobby ? 'lobby' : f.online ? 'online' : '';
-    li.innerHTML = `<span class="dot ${dot}"></span><div class="finfo"><div class="fname">${f.name}</div><div class="fstatus">${statusText(f)}</div></div>`;
+    li.innerHTML = `<span class="dot"></span><div class="finfo"><div class="fname">${f.name}</div><div class="fstatus"></div></div>`;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'invite';
-    if (f.inLobby) { b.textContent = 'IN'; b.disabled = true; }
-    else if (f.invitePending > 0) { b.textContent = '…'; b.className += ' pending'; b.disabled = true; }
-    else { b.textContent = 'INVITE'; b.disabled = !ACTIONS.invite.can(f); }
-    b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); if (ACTIONS.invite.can(f)) { ACTIONS.invite.run(f); renderList(); } });
+    b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); if (ACTIONS.invite.can(f)) { ACTIONS.invite.run(f); updateList(); } });
     li.appendChild(b);
     li.addEventListener('click', e => { e.preventDefault(); openMenu(f); });
     ui.list.appendChild(li);
+    listRows[id] = { li, dot: li.querySelector('.dot'), status: li.querySelector('.fstatus'), btn: b, last: '' };
+  }
+}
+function updateList() {
+  const count = lobbyMembers().length + '/' + needed() + ' in party';
+  if (ui.friendCount.textContent !== count) ui.friendCount.textContent = count;
+  for (const id of ROSTER) {
+    const f = G.friends[id], r = listRows[id]; if (!r) continue;
+    const st = statusText(f);
+    const dot = f.inLobby ? 'dot lobby' : f.online ? 'dot online' : 'dot';
+    const btn = f.inLobby ? 'IN' : f.invitePending > 0 ? '…' : 'INVITE';
+    const dis = f.inLobby || f.invitePending > 0 || !ACTIONS.invite.can(f);
+    const key = st + '|' + dot + '|' + btn + '|' + dis;
+    if (r.last === key) continue;
+    r.last = key;
+    r.status.textContent = st; r.dot.className = dot;
+    r.btn.textContent = btn; r.btn.disabled = dis; r.btn.className = 'invite' + (btn === '…' ? ' pending' : '');
   }
 }
 const slotEls = [];
@@ -363,12 +453,11 @@ function buildSlots() {
   ui.slots.innerHTML = ''; slotEls.length = 0;
   for (let i = 0; i < SLOTS; i++) {
     const d = document.createElement('div'); d.className = 'slot empty';
-    d.innerHTML = `<div class="tag"><div class="icon"></div><span class="name"></span><span class="state"></span><div class="bar"><div></div></div></div>`;
+    d.innerHTML = `<div class="tag"><div class="icon"></div><span class="name"></span><span class="state"></span><div class="bar"><div></div></div></div><div class="bubble hidden"></div>`;
     d.addEventListener('click', e => { e.preventDefault(); const id = G.lobby[i]; if (id) openMenu(G.friends[id]); });
     ui.slots.appendChild(d); slotEls.push(d);
   }
 }
-const listCache = {};
 function renderHud() {
   ui.clock.textContent = fmtClock(G.clock);
   ui.clock.classList.toggle('late', G.clock > 210);
@@ -379,24 +468,26 @@ function renderHud() {
   ui.readyCheck.disabled = G.rcCooldown > 0;
   for (let i = 0; i < SLOTS; i++) {
     const el = slotEls[i], id = G.lobby[i], f = id ? G.friends[id] : null;
-    const key = f ? `${f.id}|${f.ready}|${f.screaming > 0}|${Math.round((f.def.patience ? f.patience : f.anger) / 4)}` : (i < needed() ? 'empty' : 'na');
+    const bub = el.querySelector('.bubble');
+    const bubKey = f && f.bubbleT > 0 ? f.bubble + '|' + f.bubbleKind : '';
+    if (bub.dataset.key !== bubKey) { bub.dataset.key = bubKey; if (!bubKey) bub.classList.add('hidden'); else { bub.textContent = f.bubble; bub.className = 'bubble ' + f.bubbleKind; } }
+    const waiting = f && f.ready && f.waitT > 4;
+    const key = f ? `${f.id}|${f.ready}|${f.screaming > 0}|${f.mood}|${waiting}|${Math.round((f.def.patience ? f.patience : f.anger) / 4)}` : (i < needed() ? 'empty' : 'na');
     if (el.dataset.key === key) continue;
     el.dataset.key = key;
     el.className = 'slot' + (f ? (f.screaming > 0 ? ' screaming' : '') : ' empty');
     const icon = el.querySelector('.icon'), name = el.querySelector('.name'), st = el.querySelector('.state'), bar = el.querySelector('.bar');
     if (!f) { icon.textContent = ''; name.textContent = i < needed() ? 'EMPTY' : '—'; st.textContent = i < needed() ? 'invite someone' : 'phase 2'; bar.style.visibility = 'hidden'; continue; }
-    icon.textContent = f.screaming > 0 ? '📢' : f.ready ? '✅' : '🔴';
+    icon.textContent = f.screaming > 0 ? '📢' : f.mood === 'annoyed' && !f.ready ? '😤' : f.ready ? '✅' : '🔴';
     name.textContent = f.name;
-    st.textContent = f.screaming > 0 ? 'SCREAMING' : f.ready ? 'READY' : 'NOT READY';
-    st.className = 'state ' + (f.ready ? 'ready' : 'notready');
+    st.textContent = f.screaming > 0 ? 'SCREAMING' : waiting ? 'READY · WAITING…' : f.mood === 'annoyed' ? (f.ready ? 'READY · ANNOYED' : 'ANNOYED') : f.ready ? 'READY' : 'NOT READY';
+    st.className = 'state ' + (f.screaming > 0 ? 'notready' : waiting ? 'waiting' : f.mood === 'annoyed' ? 'annoyed' : f.ready ? 'ready' : 'notready');
     bar.style.visibility = 'visible';
     if (f.def.anger) { bar.className = 'bar anger'; bar.firstElementChild.style.width = Math.round(f.anger) + '%'; }
     else { const pct = f.patience / f.def.patience.max * 100; bar.className = 'bar' + (pct < 30 ? ' low' : ''); bar.firstElementChild.style.width = Math.round(pct) + '%'; }
   }
-  // list refresh when something visible changed
-  const sig = ROSTER.map(id => { const f = G.friends[id]; return statusText(f) + (ACTIONS.invite.can(f) ? 1 : 0); }).join('|');
-  if (listCache.sig !== sig) { listCache.sig = sig; renderList(); }
-  if (menuTarget && !ui.menu.classList.contains('hidden')) { const sub = ui.menuSub.textContent; renderMenu(); void sub; }
+  updateList();
+  if (menuTarget && !ui.menu.classList.contains('hidden')) updateMenu();
   if (G.bannerT > 0) { G.bannerT -= 1 / 60; if (G.bannerT <= 0) ui.banner.classList.add('hidden'); }
 }
 

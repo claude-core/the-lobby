@@ -13,7 +13,8 @@ const SKIN = {
   fair: '#f6dcc3',
   light: '#f1c9a5',
   tan: '#dba877',
-  brown: '#b57a50',
+  medium: '#b8845c',
+  brown: '#8c5a3c',
 };
 
 const FRIENDS = {
@@ -21,7 +22,7 @@ const FRIENDS = {
     name: 'Shaun', chaos: 2,
     look: { skin: 'light', hair: 'medium', hairColor: '#e8c860', shirt: '#9b59b6', pants: '#2c3e50' },
     online: { window: [30, 200], once: true },         // appears exactly once, seeded (phase 2)
-    readyTime: [6, 12],
+    readyTime: [6, 12], readyHold: [10, 15],
     patience: { max: 100, drain: 3.2 },                 // CODE RED: fastest drain in the lobby
     joinDelay: [2, 4],
     lines: {
@@ -32,6 +33,7 @@ const FRIENDS = {
       ping: ['yeah im here'],
       text: ['haha ok'],
       call: ['why are you calling me'],
+      wait: ['are we going?'], unready: ['one sec'], annoyed: ['ok maybe next month'],
     },
     issues: [],
   },
@@ -40,8 +42,8 @@ const FRIENDS = {
     name: 'Matt', chaos: 1,
     look: { skin: 'fair', hair: 'medium', hairColor: '#d1542a', shirt: '#3b7dd8', pants: '#34495e', freckles: true },
     online: { window: [0, 15] },
-    readyTime: [3, 6],
-    patience: { max: 100, drain: 0.5 },
+    readyTime: [3, 6], readyHold: [28, 40],
+    patience: { max: 100, drain: 0.7 },
     joinDelay: [2, 4],
     lines: {
       join: ['Tooney', 'tooney time boys'],
@@ -51,6 +53,9 @@ const FRIENDS = {
       ping: ['Tooney'],
       text: ['tooney 👍'],
       call: ['Tooney time?'],
+      wait: ['tooney?', 'we playing or', 'tooney... time?'],
+      unready: ['grabbing a drink, un-ready', 'brb tooney'],
+      annoyed: ['ok this is taking a while', 'tooney time is passing'],
       hiShaun: 'Hi Shaun',
       matchFound: 'TOONEY TIME',
     },
@@ -59,11 +64,11 @@ const FRIENDS = {
 
   justin: {
     name: 'Justin', chaos: 3,
-    look: { skin: 'light', hair: 'short', hairColor: '#4a3426', shirt: '#e74c3c', pants: '#1f2a44' },
+    look: { skin: 'medium', hair: 'short', hairColor: '#2a1c14', shirt: '#e74c3c', pants: '#1f2a44' },
     online: { window: [0, 0] },                         // already there. always there.
-    readyTime: [2, 4],
+    readyTime: [2, 4], readyHold: [10, 16],
     patience: null,                                     // no patience bar: an ANGER meter instead
-    anger: { max: 100, rise: 1.6, screamSeconds: 7, calm: 40 },
+    anger: { max: 100, rise: 2.4, screamSeconds: 7, calm: 40 },
     joinDelay: [0, 1],
     neverLeaves: true,
     lines: {
@@ -75,6 +80,9 @@ const FRIENDS = {
       text: ['dont tell me to chill'],
       call: ['WHAT'],
       scream: ['IF YOU WANT TO GET SCREAMING WITH ME, THEN GET SCREAMING', 'SOMEBODY PLEASE PLAY GAMES WITH ME', 'READY UP. READY. UP.'],
+      wait: ['WHY ARE WE WAITING', 'READY UP. NOW.', 'WHO IS NOT READY'],
+      unready: ['FINE. NOT READY THEN.', 'im unreadying until people ready'],
+      annoyed: ['I HAVE BEEN READY FOR AN HOUR', 'SOMEBODY DO SOMETHING'],
       kicked: 'SOMEBODY PLEASE PLAY GAMES WITH ME',
       calmed: ['...fine', 'ok. ok. im calm.', 'im not even mad'],
     },
@@ -85,8 +93,9 @@ const FRIENDS = {
     name: 'Andre', chaos: 3,
     look: { skin: 'tan', hair: 'short', hairColor: '#1b1b1b', shirt: '#27ae60', pants: '#2c3e50' },
     online: { window: [8, 35] },
-    readyTime: [4, 9],
-    patience: { max: 100, drain: 0.8 },
+    readyTime: [4, 9], readyHold: [12, 20],
+    patience: { max: 100, drain: 1.2 },
+    outburst: { every: [18, 32], ignoreSeconds: 6 },
     joinDelay: [2, 5],
     lines: {
       join: ['BOYYYSSSSS', 'boys. BOYS.'],
@@ -96,7 +105,12 @@ const FRIENDS = {
       ping: ['im here im here'],
       text: ['im chill. YOURE not chill.'],
       call: ['BOYS whats up'],
-      outburst: ['LISTEN TO ME', 'YOU\'RE NOT LISTENING', 'I LIT HIM FOR 17 AND NOBODY PUSHED'],
+      wait: ['boys im ready. BOYS.', 'what are we doing', 'LISTEN TO ME. ready up.'],
+      unready: ['im getting a drink, un-ready', 'un-readying until you listen'],
+      annoyed: ['this is why we never play', 'im about to hop off boys'],
+      outburst: ['LISTEN TO ME', 'I LIT HIM FOR 17 AND NOBODY PUSHED', 'BOYS. BOYS. BOYS.'],
+      ignored: ['YOU\'RE NOT LISTENING', 'NOBODY LISTENS TO ME'],
+      listened: ['thank you. finally.', 'ok. ok. we land hot.'],
     },
     issues: [],
   },
@@ -105,8 +119,8 @@ const FRIENDS = {
     name: 'Nicky B', chaos: 3,
     look: { skin: 'light', hair: 'short', hairColor: '#1b1b1b', shirt: '#f39c12', pants: '#2c3e50' },
     online: { window: [40, 110] },
-    readyTime: [5, 10],
-    patience: { max: 100, drain: 0.7 },
+    readyTime: [5, 10], readyHold: [15, 25],
+    patience: { max: 100, drain: 0.9 },
     joinDelay: [3, 6],
     lines: {
       join: ['yo', 'sup'],
@@ -116,6 +130,7 @@ const FRIENDS = {
       ping: ['yeah'],
       text: ['lol chill'],
       call: ['hello?'],
+      wait: ['we playing?'], unready: ['hold on, un-ready'], annoyed: ['im about to go to bed'],
     },
     issues: [],
   },
@@ -124,8 +139,8 @@ const FRIENDS = {
     name: 'Parker', chaos: 5,
     look: { skin: 'fair', hair: 'medium', hairColor: '#7a4b2a', shirt: '#8e44ad', pants: '#34495e' },
     online: { window: [25, 90] },
-    readyTime: [8, 16],
-    patience: { max: 100, drain: 0.9 },
+    readyTime: [8, 16], readyHold: [8, 14],
+    patience: { max: 100, drain: 1.1 },
     joinDelay: [4, 9],
     lines: {
       join: ['im here im here', 'sorry sorry'],
@@ -135,6 +150,7 @@ const FRIENDS = {
       ping: ['ya ya'],
       text: ['bro im literally ready'],
       call: ['dude im in the bathroom'],
+      wait: ['im ready im ready'], unready: ['one sec, un-ready'], annoyed: ['bro'],
     },
     issues: [],
   },
@@ -143,8 +159,8 @@ const FRIENDS = {
     name: 'Nicky C', chaos: 4,
     look: { skin: 'light', hair: 'short', hairColor: '#6b4423', shirt: '#1abc9c', pants: '#2c3e50' },
     online: { window: [15, 60] },
-    readyTime: [4, 8],
-    patience: { max: 100, drain: 1.4 },
+    readyTime: [4, 8], readyHold: [12, 18],
+    patience: { max: 100, drain: 1.6 },
     joinDelay: [2, 5],
     lines: {
       join: ['hey', 'ok im on'],
@@ -154,6 +170,7 @@ const FRIENDS = {
       ping: ['what'],
       text: ['im chill'],
       call: ['stop calling me'],
+      wait: ['can we just go'], unready: ['im not ready until people stop yelling'], annoyed: ['im about to leave'],
     },
     issues: [],
   },
