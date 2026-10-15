@@ -16,7 +16,7 @@ const ui = {
   app: $('app'), clock: $('clock'), vibeFill: $('vibe-fill'), vibeLabel: $('vibe-label'), mute: $('mute'),
   list: $('friend-list'), friendCount: $('friend-count'), restart: $('btn-restart'), feed: $('feed'),
   stage: $('stage'), canvas: $('chars'), slots: $('slots'), banner: $('banner'), readyCheck: $('ready-check'), readyCount: $('ready-count'),
-  subs: $('subs'), menu: $('menu'), menuTitle: $('menu-title'), menuSub: $('menu-sub'), menuActions: $('menu-actions'), menuResult: $('menu-result'), menuClose: $('menu-close'),
+  menu: $('menu'), menuTitle: $('menu-title'), menuSub: $('menu-sub'), menuActions: $('menu-actions'), menuResult: $('menu-result'), menuClose: $('menu-close'),
   title: $('screen-title'), titleDay: $('title-day'), titleTwist: $('title-twist'), titleNext: $('title-next'), start: $('btn-start'),
   result: $('screen-result'), resultDay: $('result-day'), resultTitle: $('result-title'), resultBody: $('result-body'), again: $('btn-again'), resultNext: $('result-next'),
   toast: $('toast'),
@@ -68,7 +68,6 @@ function startEvening(mode) {
   G.state = 'playing';
   ui.title.classList.add('hidden'); ui.result.classList.add('hidden'); ui.app.classList.remove('hidden');
   ui.stage.classList.remove('night', 'match');
-  ui.subs.innerHTML = '';
   notice('Party created · need ' + needed() + ' ready');
   buildSlots(); buildList(); resize();
 }
@@ -85,10 +84,7 @@ function say(f, text, kind, noBubble) {
   if (!text) return;
   if (!f) return notice(text);
   if (!noBubble) { f.bubble = text; f.bubbleKind = kind || ''; f.bubbleT = 3; }
-  G.subs.push({ who: f ? f.name : null, text, kind: kind || (f ? '' : 'sys'), color: f ? f.def.look.shirt : '' });
-  if (G.subs.length > 2) G.subs.shift();
-  if (f) { f.talkT = 1.2; G.log.lines[f.id] = (G.log.lines[f.id] || 0) + 1; }
-  ui.subs.innerHTML = G.subs.map(s => `<div class="line ${s.kind}">${s.who ? `<b style="color:${s.color}">${s.who}:</b>` : ''}${esc(s.text)}</div>`).join('');
+  f.talkT = 1.2; G.log.lines[f.id] = (G.log.lines[f.id] || 0) + 1;
 }
 function esc(s) { return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 function banner(text, kind, secs) {
