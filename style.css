@@ -165,3 +165,9 @@ h1.lose { color: #ff8a8a; text-shadow: 0 3px 0 #5a1a1a; }
 @keyframes pop { from { opacity: 0; } }
 #banner { animation: bpop .35s ease-out; }
 @keyframes bpop { from { transform: translate(-50%,-50%) scale(.6); opacity: 0; } }
+
+.slot.codered::before { content: ''; position: absolute; inset: 6px 4px; border: 2px solid rgba(255,70,70,.9); border-radius: 14px; box-shadow: 0 0 18px rgba(255,40,40,.6), inset 0 0 18px rgba(255,40,40,.25); animation: codered .8s ease-in-out infinite alternate; pointer-events: none; }
+@keyframes codered { to { border-color: rgba(255,170,170,.5); box-shadow: 0 0 6px rgba(255,40,40,.3); } }
+.slot.codered .tag .name { color: #ff8a8a; }
+.dot.blink { animation: dotblink 1s steps(2) infinite; }
+@keyframes dotblink { to { opacity: .3; } }
