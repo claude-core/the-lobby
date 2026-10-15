@@ -1,0 +1,12 @@
+{
+  "name": "The Lobby",
+  "short_name": "The Lobby",
+  "description": "Get your friends into a match. Good luck.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#141a2e",
+  "theme_color": "#141a2e",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="The Lobby">
+<meta name="theme-color" content="#141a2e">
+<meta name="format-detection" content="telephone=no">
+<title>The Lobby</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app" class="hidden">
+  <header id="top">
+    <div id="mode">SQUADS</div>
+    <div id="clock">9:00 PM</div>
+    <div id="vibe"><div id="vibe-fill"></div><span id="vibe-label">PARTY VIBE</span></div>
+    <button id="mute" type="button" aria-label="Mute">🔊</button>
+  </header>
+
+  <aside id="friends">
+    <h2>FRIENDS <span id="friend-count"></span></h2>
+    <ul id="friend-list"></ul>
+    <button id="btn-restart" type="button" class="side-btn">↻ Restart Party</button>
+  </aside>
+
+  <main id="stage">
+    <div id="sky"><div class="sun"></div><div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div></div>
+    <canvas id="chars"></canvas>
+    <div id="slots"></div>
+    <div id="banner" class="hidden"></div>
+    <div id="readycheck-wrap">
+      <button id="ready-check" type="button">READY CHECK<small id="ready-count">0 / 5</small></button>
+    </div>
+  </main>
+
+  <div id="subs"></div>
+</div>
+
+<div id="menu" class="hidden">
+  <div id="menu-sheet">
+    <div id="menu-title">Matt</div>
+    <div id="menu-sub"></div>
+    <div id="menu-actions"></div>
+    <div id="menu-result"></div>
+    <button id="menu-close" type="button">Close</button>
+  </div>
+</div>
+
+<div id="rotate"><div><div class="phone">📱</div>Rotate your phone<br><small>The Lobby is a landscape game.</small></div></div>
+
+<div id="screen-title" class="screen">
+  <div class="panel">
+    <h1>THE LOBBY</h1>
+    <div class="sub" id="title-day">Evening #1</div>
+    <div class="twist" id="title-twist"></div>
+    <p class="blurb">Seven friends. Five slots. One match. You're not in the game — you're the one trying to get everyone else into it.</p>
+    <ul class="howto">
+      <li><b>Invite</b> friends from the list when they come online.</li>
+      <li>Tap anyone in the lobby to <b>ping, text, call</b> or kick them.</li>
+      <li>Get <b>everyone ready at once</b> before the Party Vibe dies or it hits 1am.</li>
+    </ul>
+    <button class="big" id="btn-start" type="button">Start the evening</button>
+    <div class="fine" id="title-next">Phase 1 test build — Matt, Justin and Andre only</div>
+  </div>
+</div>
+
+<div id="screen-result" class="screen hidden">
+  <div class="panel">
+    <div class="sub" id="result-day">Evening #1</div>
+    <h1 id="result-title">MATCH FOUND</h1>
+    <div id="result-body"></div>
+    <button class="big" id="btn-again" type="button">Play again</button>
+    <div class="fine" id="result-next"></div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="base.js"></script>
+<script src="friends.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
