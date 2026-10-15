@@ -321,3 +321,68 @@ const SHARE = {
   tooney: '✅ TOONEY TIME',
   golden: '✨ Golden Evening',
 };
+
+// ---------------------------------------------------------------------------
+// Voices: each friend's chat blip (pitch in Hz, oscillator type).
+// ---------------------------------------------------------------------------
+const VOICES = {
+  shaun:  { pitch: 520, type: 'sine' },
+  matt:   { pitch: 620, type: 'triangle' },
+  justin: { pitch: 190, type: 'sawtooth' },
+  andre:  { pitch: 300, type: 'square' },
+  nickyb: { pitch: 380, type: 'triangle' },
+  parker: { pitch: 460, type: 'square' },
+  nickyc: { pitch: 560, type: 'sine' },
+};
+
+// ---------------------------------------------------------------------------
+// Loading-screen tips.
+// ---------------------------------------------------------------------------
+const TIPS = [
+  'Tip: Parker will be on in 5. He will not.',
+  'Tip: Nicky C is not offline.',
+  'Tip: Justin will never leave.',
+  "Tip: Saying 'I'm listening' is faster than arguing with Andre.",
+  "Tip: Shaun only shows up once. Don't blow it.",
+  "Tip: It's always Tooney time.",
+  'Tip: Calling someone in the bathroom does not get them out of the bathroom.',
+  'Tip: Kicking Justin has never worked. Try it anyway.',
+  "Tip: Andre's wife is not watching the movie alone. He is watching the movie.",
+  'Tip: Nicky B did not do his taxes. He is looking at his taxes.',
+  'Tip: The gummies kick in around 10:15.',
+  'Tip: When Shaun says "one sec", you have one sec.',
+  'Tip: Matt readies up faster than anyone. Appreciate Matt.',
+  'Tip: "Venmo him" is cheaper than "grab me one too".',
+  "Tip: A ready check does not make people ready. It makes people aware.",
+  'Tip: Restart Party fixes the game and breaks the mood.',
+  'Tip: Texting "chillllll" has a 20-second cooldown. Justin does not.',
+  'Tip: If the vibe is red, someone is about to say "gn boys".',
+  "Tip: BNC issues cannot be fixed. BNC issues can be made worse. Don't call.",
+  'Tip: Nobody has ever played just one match.',
+  'Tip: The match is 6 minutes. The lobby is your life now.',
+];
+
+// ---------------------------------------------------------------------------
+// Achievements. `when` is a condition the engine knows how to check at the
+// end of an evening (or the moment it happens).
+// ---------------------------------------------------------------------------
+const ACHIEVEMENTS = [
+  { id: 'crash', title: 'Got everyone ready. Server went down.', when: 'crash' },
+  { id: 'lotr', title: 'Spent longer in lobby than a Lord of the Rings extended edition', when: 'lobby228' },
+  { id: 'caught', title: 'Caught Nicky C', when: 'caught' },
+  { id: 'justin', title: 'Survived Justin', when: 'screams3win' },
+  { id: 'shaun10', title: 'Kept Shaun for 10 in-game minutes', when: 'shaun10' },
+  { id: 'shaunmatch', title: 'Played a match with Shaun', when: 'shaunmatch' },
+  { id: 'golden', title: 'Golden Evening', when: 'golden' },
+  { id: 'parkerontime', title: 'Parker showed up on time', when: 'parkerontime' },
+  { id: 'kickjustin', title: 'Tried to kick Justin. Bold.', when: 'kickjustin' },
+  { id: 'bnccall', title: 'Called Parker during BNC issues', when: 'bnccall' },
+  { id: 'listener', title: 'Said "I\'m listening" five times in one night', when: 'listened5' },
+  { id: 'allseven', title: 'Had all seven in the lobby at some point', when: 'allseven' },
+  { id: 'vote', title: 'Answered the vote in time', when: 'vote' },
+  { id: 'early', title: 'Match before 9:30pm. Who are these people?', when: 'early' },
+  { id: 'lastcall', title: 'Match after 12:45am', when: 'lastcall' },
+  { id: 'water', title: 'Got Matt to drink water', when: 'water' },
+  { id: 'restart3', title: 'Restarted the party three times', when: 'restart3' },
+  { id: 'noactions', title: 'Won without pinging, texting or calling anyone', when: 'noactions' },
+];

@@ -76,7 +76,16 @@
         <li>Win: <b>5 READY at the same time</b> for 3 seconds. Lose: the Party Vibe hits zero, or it's 1am.</li>
         <li>Shaun shows up once a night. Don't blow it.</li>
       </ul>
+      <div class="tip" id="title-tip"></div>
     </div>
+  </div>
+</div>
+
+<div id="screen-loading" class="screen hidden">
+  <div class="panel loading">
+    <div class="load-title">CONNECTING TO PARTY</div>
+    <div class="load-bar"><div id="load-fill"></div></div>
+    <div class="tip" id="load-tip"></div>
   </div>
 </div>
 
@@ -105,7 +114,7 @@
 <div id="screen-stats" class="screen hidden">
   <div class="panel">
     <h1 class="small">STATS</h1>
-    <div id="stats-body"></div>
+    <div class="stats-cols"><div id="stats-body"></div><div id="ach-body"></div></div>
     <button class="big alt" id="btn-stats-close" type="button">Close</button>
   </div>
 </div>

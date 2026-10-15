@@ -20,7 +20,8 @@ const ui = {
   title: $('screen-title'), titleDay: $('title-day'), titleTwist: $('title-twist'), titleNext: $('title-next'), start: $('btn-start'), titlePractice: $('btn-title-practice'),
   result: $('screen-result'), resultDay: $('result-day'), resultTitle: $('result-title'), resultTag: $('result-tag'), resultBig: $('result-big'), resultBody: $('result-body'), again: $('btn-again'), resultNext: $('result-next'),
   share: $('btn-share'), stats: $('btn-stats'), practice: $('btn-practice'), today: $('btn-today'), statsScreen: $('screen-stats'), statsBody: $('stats-body'), statsClose: $('btn-stats-close'),
-  toast: $('toast'),
+  toast: $('toast'), achBody: $('ach-body'),
+  loading: $('screen-loading'), loadFill: $('load-fill'), loadTip: $('load-tip'), titleTip: $('title-tip'), vibe: $('vibe'),
 };
 const ctx = ui.canvas.getContext('2d');
 Sfx.setup('thelobby_muted', ui.mute);
@@ -30,7 +31,7 @@ const Store = new DailyStore('thelobby_v1', { evenings: 0, matches: 0, longestLo
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const G = { notices: [], vote: null, evening: null, serverDown: 0, state: 'title', day: 1, mode: 'official', rng: null, t: 0, clock: 0, vibe: 100, friends: {}, lobby: [], subs: [], winT: 0, shake: 0, matchT: 0, matchLine: 0, lobbyMinutes: 0, result: null, bannerT: 0, rcCooldown: 0, log: {} };
+const G = { notices: [], vote: null, evening: null, serverDown: 0, confetti: [], ach: {}, heartbeatT: 0, state: 'title', day: 1, mode: 'official', rng: null, t: 0, clock: 0, vibe: 100, friends: {}, lobby: [], subs: [], winT: 0, shake: 0, matchT: 0, matchLine: 0, lobbyMinutes: 0, result: null, bannerT: 0, rcCooldown: 0, log: {} };
 let menuTarget = null;
 
 const skinOf = f => SKIN[f.def.look.skin] || f.def.look.skin;
@@ -88,6 +89,8 @@ function startEvening(mode) {
   G.friends = {}; for (const id of ROSTER) G.friends[id] = makeFriend(id);
   for (const id of ROSTER) scheduleIssues(G.friends[id]);
   G.vote = null;
+  G.ach = { listened: 0, restarts: 0, kickJustin: false, bnccall: false, water: false, vote: false, seen: {}, actions: 0, parkerJoinedAt: null, parkerReadyAt: null };
+  G.confetti = [];
   G.lobby = new Array(SLOTS).fill(null);
   // Justin is already in the lobby at 9:00pm. He is always in the lobby.
   for (const id of ROSTER) if (FRIENDS[id].neverLeaves) { const f = G.friends[id]; setOnline(f, true); joinLobby(f, true); }
@@ -96,7 +99,7 @@ function startEvening(mode) {
   ui.title.classList.add('hidden'); ui.result.classList.add('hidden'); ui.statsScreen.classList.add('hidden'); ui.app.classList.remove('hidden');
   ui.stage.classList.remove('night', 'match');
   notice('Party created · need ' + needed() + ' ready');
-  if (G.evening.golden) { banner('✨ GOLDEN EVENING ✨', 'good', 3.5); notice('Golden Evening: everyone is on and in a good mood.'); }
+  if (G.evening.golden) { banner('✨ GOLDEN EVENING ✨', 'good', 3.5); spawnConfetti(80, ['#ffd23f', '#ffe066', '#fff3b0', '#ffb800']); notice('Golden Evening: everyone is on and in a good mood.'); }
   else if (G.evening.twist) notice('Tonight: ' + G.evening.twist.text);
   if (ui.modeTag) { ui.modeTag.textContent = G.mode === 'practice' ? 'PRACTICE' : G.mode === 'debug' ? 'DEBUG · EVENING #' + G.day : ''; ui.modeTag.classList.toggle('hidden', G.mode === 'official'); }
   buildSlots(); buildList(); resize();
@@ -114,15 +117,26 @@ function say(f, text, kind, noBubble) {
   if (!text) return;
   if (!f) return notice(text);
   if (!noBubble) { f.bubble = text; f.bubbleKind = kind || ''; f.bubbleT = 3; }
+  blip(f, kind);
   f.talkT = 1.2; G.log.lines[f.id] = (G.log.lines[f.id] || 0) + 1;
+}
+let lastBlip = {};
+function blip(f, kind) {
+  const v = VOICES[f.id] || { pitch: 400, type: 'square' };
+  const now = G.t;
+  if (now - (lastBlip[f.id] || -9) < 0.12) return;
+  lastBlip[f.id] = now;
+  if (kind === 'scream') { Sfx.tone(v.pitch * 0.8, 0.12, 'sawtooth', 0.14, v.pitch * 0.5); Sfx.tone(v.pitch * 1.1, 0.1, 'sawtooth', 0.1, v.pitch * 0.6, 0.11); }
+  else { Sfx.tone(v.pitch, 0.05, v.type, 0.07); Sfx.tone(v.pitch * (kind === 'complain' ? 0.84 : 1.26), 0.05, v.type, 0.06, 0, 0.06); }
 }
 function esc(s) { return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 function banner(text, kind, secs) {
+  Sfx.noise(0.18, 0.12, 1200, 0.7);
   ui.banner.textContent = text; ui.banner.className = kind || ''; ui.banner.classList.remove('hidden');
   G.bannerT = secs || 2.2;
 }
 let toastT = null;
-function toast(msg) { ui.toast.textContent = msg; ui.toast.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => ui.toast.classList.add('hidden'), 1800); }
+function toast(msg, cls, ms) { ui.toast.textContent = msg; ui.toast.className = cls || ''; clearTimeout(toastT); toastT = setTimeout(() => ui.toast.classList.add('hidden'), ms || 1800); }
 
 // ---------------------------------------------------------------------------
 // Lobby mechanics
@@ -142,6 +156,7 @@ function invite(f) {
 function joinLobby(f, quiet) {
   const s = freeSlot(); if (s < 0) return false;
   G.lobby[s] = f.id; f.inLobby = true; f.ready = false; f.invitePending = 0; f.joinedAt = G.clock;
+  if (G.ach && G.ach.seen) { G.ach.seen[f.id] = true; if (f.id === 'parker' && G.ach.parkerJoinedAt === null) G.ach.parkerJoinedAt = G.clock; }
   const r = f.def.readyTime; f.readyT = G.rng.range(r[0], r[1]) * (1 + 0.3 * f.annoyed);
   if (f.def.patience) f.patience = f.def.patience.max * (1 - 0.15 * f.annoyed);
   f.status = 'In lobby';
@@ -165,6 +180,7 @@ function leaveLobby(f, reason) {
 function setReady(f, on, quiet) {
   if (f.ready === on) return;
   f.ready = on; f.waitT = 0; f.complainT = 0;
+  if (on && G.ach && f.id === 'parker' && G.ach.parkerReadyAt === null) G.ach.parkerReadyAt = G.clock;
   if (on) { const h = f.def.readyHold || [20, 30]; f.readyHold = G.rng.range(h[0], h[1]) * (1 - 0.2 * f.annoyed);
     const closeN = lobbyMembers().filter(m => m.ready).length;
     f.falseReady = G.rng.chance((0.14 + 0.1 * f.def.chaos) * (closeN >= 3 ? 0.5 : 1)) ? G.rng.range(2, 6) : 0; const recent = G.t - (f.lastReadyLine || -99) < 25; if (!quiet && !recent) { say(f, pick(G.rng, f.def.lines.ready)); f.lastReadyLine = G.t; } G.vibe = clamp(G.vibe + 10, 0, 100); Sfx.tone(990, 0.1, 'sine', 0.15, 1480); }
@@ -323,7 +339,7 @@ function tick(dt) {
   if (members.length >= needed() && !anyNotReady) {
     G.winT += dt;
     if (G.winT >= WIN_HOLD) {
-      if (G.evening.crash && !G.evening.crashed) { G.evening.crashed = true; G.log.crashed = true; serversDown(EVENTS.crash.minutes, EVENTS.crash.banner, EVENTS.crash.notice); return; }
+      if (G.evening.crash && !G.evening.crashed) { G.evening.crashed = true; G.log.crashed = true; unlock('crash'); serversDown(EVENTS.crash.minutes, EVENTS.crash.banner, EVENTS.crash.notice); return; }
       return matchFound();
     }
   } else G.winT = 0;
@@ -331,8 +347,12 @@ function tick(dt) {
   if (G.clock > 150) ui.stage.classList.add('night');
 }
 
+function spawnConfetti(n, colors) {
+  for (let i = 0; i < n; i++) G.confetti.push({ x: Math.random() * CW, y: -20 - Math.random() * CH * 0.6, vx: (Math.random() - 0.5) * 60, vy: 60 + Math.random() * 120, w: 5 + Math.random() * 6, h: 8 + Math.random() * 8, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 8, color: colors[Math.floor(Math.random() * colors.length)] });
+}
 function matchFound() {
   G.state = 'match'; G.matchT = 0; G.matchLine = 0; G.lobbyMinutes = G.clock;
+  spawnConfetti(160, ['#ffd23f', '#ff5a5a', '#4ade80', '#5ac8ff', '#ff8ad8', '#fff']);
   banner('MATCH FOUND', 'good', 3);
   ui.stage.classList.add('match');
   Sfx.tone(523, 0.15, 'square', 0.2); Sfx.tone(659, 0.15, 'square', 0.2, 0, 0.15); Sfx.tone(784, 0.3, 'square', 0.25, 0, 0.3);
@@ -365,6 +385,7 @@ function endEvening(kind) {
   };
   if (kind !== 'win') { banner(kind === 'vibe' ? 'Everyone hopped off.' : "It's 1am.", 'bad', 3); Sfx.tone(220, 0.8, 'sawtooth', 0.2, 80); }
   closeMenu();
+  checkEndAchievements(G.result);
   if (G.mode === 'official') Store.record(G.day, G.result, applyStats);
   setTimeout(() => showResult(G.result, G.mode), kind === 'win' ? 800 : 2200);
 }
@@ -379,7 +400,38 @@ function applyStats(s, r, day) {
   s.andreOutbursts += r.outbursts || 0;
   s.lastDay = day;
 }
-function hideScreens() { for (const s of [ui.title, ui.result, ui.statsScreen]) s.classList.add('hidden'); ui.app.classList.add('hidden'); }
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+function unlock(id) {
+  if (G.mode === 'debug') return;
+  Store.data.achievements = Store.data.achievements || {};
+  if (Store.data.achievements[id]) return;
+  const a = ACHIEVEMENTS.find(x => x.id === id); if (!a) return;
+  Store.data.achievements[id] = G.day; Store.save();
+  toast('🏆 ' + a.title, 'ach', 3200);
+  Sfx.tone(880, 0.1, 'square', 0.15); Sfx.tone(1175, 0.1, 'square', 0.15, 0, 0.1); Sfx.tone(1760, 0.25, 'square', 0.18, 0, 0.2);
+}
+function checkEndAchievements(r) {
+  const A = G.ach;
+  if (r.kind === 'win') {
+    if (r.lobbyMinutes >= 228) unlock('lotr');
+    if (r.screams >= 3) unlock('justin');
+    if (r.lobbyMinutes <= 30) unlock('early');
+    if (r.lobbyMinutes >= 225) unlock('lastcall');
+    if (A.actions === 0) unlock('noactions');
+    if (r.shaun && r.shaun.withMatch) unlock('shaunmatch');
+  }
+  if (r.golden) unlock('golden');
+  if (r.caught) unlock('caught');
+  if (r.crashed) unlock('crash');
+  if (r.shaun && r.shaun.stayedMin >= 10) unlock('shaun10');
+  if (A.parkerJoinedAt !== null && A.parkerJoinedAt <= 15 && A.parkerReadyAt !== null && A.parkerReadyAt <= 20) unlock('parkerontime');
+  if (A.listened >= 5) unlock('listener');
+  if (Object.keys(A.seen).length >= ROSTER.length) unlock('allseven');
+  if (A.restarts >= 3) unlock('restart3');
+}
+function hideScreens() { for (const s of [ui.title, ui.result, ui.statsScreen, ui.loading]) s.classList.add('hidden'); ui.app.classList.add('hidden'); }
 function showResult(r, mode) {
   hideScreens();
   G.state = 'over'; G.shownDay = r.day;
@@ -437,6 +489,9 @@ function showStats() {
     ['Matches with Shaun', s.shaunMatches], ['Longest time keeping Shaun', fmtDur(s.shaunLongest)], ['Parker AFK, all-time', s.parkerAfk], ['Andre outbursts, all-time', s.andreOutbursts],
     ['Current streak', s.streak], ['Best streak', s.bestStreak]];
   ui.statsBody.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join('');
+  const got = Store.data.achievements || {};
+  const n = Object.keys(got).length;
+  ui.achBody.innerHTML = `<div id="ach-title">ACHIEVEMENTS ${n}/${ACHIEVEMENTS.length}</div>` + ACHIEVEMENTS.map(a => `<div class="ach ${got[a.id] ? 'on' : ''}">${a.title}</div>`).join('');
   ui.statsScreen.classList.remove('hidden');
 }
 
@@ -568,10 +623,10 @@ function runIssueButton(f, I, b) {
   switch (b.kind) {
     case 'shorten': I.remaining -= gm2s(b.minutes); break;
     case 'lengthen': I.remaining += gm2s(b.minutes); break;
-    case 'resolve': endIssue(f, true); break;
+    case 'resolve': if (b.id === 'water') unlock('water'); endIssue(f, true); break;
     case 'postpone': f.deadlineAt += b.minutes; notice(f.name + ' now leaves at ' + fmtClock(f.deadlineAt) + '.'); break;
     case 'fix': I.fixing = b.seconds || 4; break;
-    case 'answer': G.vote = null; endIssue(f, true); if (b.id === 'no' && f.def.anger) f.anger = clamp(f.anger + 15, 0, 100); G.vibe = clamp(G.vibe + 3, 0, 100); break;
+    case 'answer': unlock('vote'); G.vote = null; endIssue(f, true); if (b.id === 'no' && f.def.anger) f.anger = clamp(f.anger + 15, 0, 100); G.vibe = clamp(G.vibe + 3, 0, 100); break;
   }
   if (b.kind !== 'lengthen') G.vibe = clamp(G.vibe + 5, 0, 100);
   if (b.line) say(f, b.line);
@@ -587,7 +642,7 @@ function runLateButton(f, b) {
 function catchSneak(f) {
   f.sneaking = false; setOnline(f, true);
   notice('You caught ' + f.name + ' in another party.');
-  G.log.caught = true;
+  G.log.caught = true; unlock('caught');
   if (!joinLobby(f, true)) f.status = 'Online';
   say(f, pick(G.rng, f.def.lines.caught), 'complain');
   f.annoyed = Math.min(3, f.annoyed + 1);
@@ -620,7 +675,7 @@ function tickShaun(f, dt) {
   const S = f.shaun;
   if (!S.appeared) { if (G.clock >= f.onlineAt) shaunAppears(f); return; }
   if (S.left) return;
-  if (f.inLobby) { S.stayed += dt; }
+  if (f.inLobby) { S.stayed += dt; if (!S.ach10 && s2gm(S.stayed) >= 10) { S.ach10 = true; unlock('shaun10'); } }
   else if (f.online && f.invitePending <= 0) { S.windowT -= dt; if (S.windowT <= 0) shaunLeaves(f); }
 }
 
@@ -631,27 +686,27 @@ const ACTIONS = {
   invite: { label: 'Invite', hint: 'to the party', cls: 'primary', can: f => f.online && !f.gone && !f.disconnected && !f.inLobby && f.invitePending <= 0 && freeSlot() >= 0 && f.reinviteT <= 0 && G.serverDown <= 0,
     run: f => { invite(f); return f.name + ' invited. Now we wait.'; } },
   ping: { label: 'Ping', hint: 'free, weak', can: f => f.inLobby && f.cd.ping <= 0,
-    run: f => { f.cd.ping = 4; Sfx.tone(1200, 0.05, 'square', 0.1);
+    run: f => { G.ach.actions++; f.cd.ping = 4; Sfx.tone(1200, 0.05, 'square', 0.1);
       if (f.issue && f.issue.def.type === 'slowready') { f.issue.remaining -= gm2s(4); say(f, 'huh? oh. yeah.'); return 'The ping got through the haze a little.'; }
       if (f.afk || f.broken) return f.name + ' is away. The ping echoed.';
       f.readyT -= 2; f.readyHold += 4; if (f.def.anger) f.anger += 4; say(f, pick(G.rng, f.def.lines.ping)); return 'Pinged ' + f.name + '. A grunt was heard.'; } },
   text: { label: 'Text "chillllll"', hint: 'medium · 20s cooldown', can: f => f.inLobby && f.cd.text <= 0,
-    run: f => { f.cd.text = 20; f.readyT -= 4; f.readyHold += 10; f.waitT = 0; if (f.def.patience) f.patience = clamp(f.patience + 12, 0, f.def.patience.max); if (f.def.anger) f.anger = clamp(f.anger - 10, 0, 100); say(f, pick(G.rng, f.def.lines.text)); return f.name + ' read it. Left on read, but read.'; } },
+    run: f => { G.ach.actions++; f.cd.text = 20; f.readyT -= 4; f.readyHold += 10; f.waitT = 0; if (f.def.patience) f.patience = clamp(f.patience + 12, 0, f.def.patience.max); if (f.def.anger) f.anger = clamp(f.anger - 10, 0, 100); say(f, pick(G.rng, f.def.lines.text)); return f.name + ' read it. Left on read, but read.'; } },
   call: { label: 'Call', hint: 'strong · annoys everyone else', can: f => f.inLobby && f.cd.call <= 0,
-    run: f => { f.cd.call = 30; G.log.calls++;
+    run: f => { G.ach.actions++; f.cd.call = 30; G.log.calls++;
       for (const m of lobbyMembers()) if (m !== f) { if (m.def.patience) m.patience -= 8; if (m.def.anger) m.anger += 10; }
       Sfx.tone(700, 0.12, 'sine', 0.12); Sfx.tone(700, 0.12, 'sine', 0.12, 0, 0.25);
-      if (f.issue && f.issue.def.worse && f.issue.def.worse.call) { f.issue.remaining += gm2s(f.issue.def.worse.call); if (f.issue.def.type === 'deadline') f.deadlineAt -= 10; say(f, f.issue.def.worse.line || pick(G.rng, f.def.lines.call), 'complain'); return 'That made it worse. Everyone else heard it ring too.'; }
+      if (f.issue && f.issue.def.worse && f.issue.def.worse.call) { if (f.issue.def.id === 'bnc') unlock('bnccall'); f.issue.remaining += gm2s(f.issue.def.worse.call); if (f.issue.def.type === 'deadline') f.deadlineAt -= 10; say(f, f.issue.def.worse.line || pick(G.rng, f.def.lines.call), 'complain'); return 'That made it worse. Everyone else heard it ring too.'; }
       if (f.afk || f.broken) { say(f, pick(G.rng, f.def.lines.call), 'complain'); return f.name + ' picked up, annoyed, and is still away.'; }
       f.readyT = Math.min(f.readyT, 0.5); f.readyHold += 15; f.waitT = 0; if (f.def.patience) f.patience = clamp(f.patience + 6, 0, f.def.patience.max);
       say(f, pick(G.rng, f.def.lines.call)); return 'Called ' + f.name + '. Everyone else heard it ring.'; } },
   calm: { label: 'Calm down, Justin', hint: 'lowers anger', cls: 'fix', can: f => f.inLobby && !!f.def.anger && f.cd.calm <= 0,
     run: f => { f.cd.calm = 8; calmDown(f); return 'Justin took a breath. One breath.'; } },
   listen: { label: "I'm listening, Andre", hint: 'ends the outburst', cls: 'fix', can: f => f.inLobby && !!f.def.outburst && f.ignoredT > 0,
-    run: f => { f.ignoredT = 0; f.outburstT = G.rng.range(f.def.outburst.every[0], f.def.outburst.every[1]); say(f, pick(G.rng, f.def.lines.listened)); if (f.def.patience) f.patience = clamp(f.patience + 10, 0, f.def.patience.max); G.vibe = clamp(G.vibe + 6, 0, 100); return 'Andre feels heard. For now.'; } },
+    run: f => { G.ach.listened++; if (G.ach.listened >= 5) unlock('listener'); f.ignoredT = 0; f.outburstT = G.rng.range(f.def.outburst.every[0], f.def.outburst.every[1]); say(f, pick(G.rng, f.def.lines.listened)); if (f.def.patience) f.patience = clamp(f.patience + 10, 0, f.def.patience.max); G.vibe = clamp(G.vibe + 6, 0, 100); return 'Andre feels heard. For now.'; } },
   kick: { label: 'Kick', hint: 'frees the slot', cls: 'danger', can: f => f.inLobby,
     run: f => {
-      if (f.def.neverLeaves) { f.anger = clamp(f.anger + 25, 0, 100); say(f, f.def.lines.kicked, 'scream'); banner(f.name + ' instantly rejoined', 'bad', 1.8); G.shake = 0.5; return 'Kick failed. He was back before the button finished animating.'; }
+      if (f.def.neverLeaves) { G.ach.kickJustin = true; unlock('kickjustin'); f.anger = clamp(f.anger + 25, 0, 100); say(f, f.def.lines.kicked, 'scream'); banner(f.name + ' instantly rejoined', 'bad', 1.8); G.shake = 0.5; return 'Kick failed. He was back before the button finished animating.'; }
       leaveLobby(f, 'kicked'); return f.name + ' kicked. He will remember this.'; } },
 };
 const ACTION_ORDER = ['invite', 'ping', 'text', 'call', 'calm', 'listen', 'kick'];
@@ -726,6 +781,7 @@ ui.menu.addEventListener('click', e => { if (e.target === ui.menu) closeMenu(); 
 ui.restart.addEventListener('click', e => {
   e.preventDefault(); if (G.state !== 'playing') return;
   for (const m of lobbyMembers()) { setReady(m, false, true); m.readyT = Math.max(m.readyT, 2) * 0.6; }
+  G.ach.restarts++; if (G.ach.restarts >= 3) unlock('restart3');
   G.vibe = clamp(G.vibe - 5, 0, 100);
   say(null, 'Party restarted. Everyone is un-readied.'); Sfx.tone(400, 0.2, 'triangle', 0.15, 200);
 });
@@ -801,6 +857,11 @@ function buildSlots() {
   }
 }
 function renderHud() {
+  if (G.shake > 0.05) ui.stage.style.transform = `translate(${(Math.random() - 0.5) * G.shake * 10}px, ${(Math.random() - 0.5) * G.shake * 8}px)`;
+  else if (ui.stage.style.transform) ui.stage.style.transform = '';
+  const low = G.state === 'playing' && G.vibe < 25;
+  if (ui.vibe.classList.contains('low') !== low) ui.vibe.classList.toggle('low', low);
+  if (low) { G.heartbeatT -= 1 / 60; if (G.heartbeatT <= 0) { G.heartbeatT = G.vibe < 12 ? 0.6 : 1.1; Sfx.tone(55, 0.18, 'sine', 0.35, 40); Sfx.tone(55, 0.14, 'sine', 0.25, 38, 0.18); } }
   ui.clock.textContent = fmtClock(G.clock);
   ui.clock.classList.toggle('late', G.clock > 210);
   ui.vibeFill.style.width = Math.round(G.vibe) + '%';
@@ -855,6 +916,7 @@ function drawScene() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, CW, CH);
   if (G.state === 'title' || !G.lobby.length) return;
+  updateConfetti();
   const shx = G.shake > 0 ? (Math.random() - 0.5) * G.shake * 8 : 0, shy = G.shake > 0 ? (Math.random() - 0.5) * G.shake * 8 : 0;
   G.shake = Math.max(0, G.shake - 1 / 60 * 1.5);
   const slotW = CW / SLOTS;
@@ -866,6 +928,15 @@ function drawScene() {
     if (!id) { drawEmpty(cx, baseY, scale, i < needed()); continue; }
     drawFriend(G.friends[id], cx, baseY, scale);
   }
+  drawConfetti();
+}
+function updateConfetti() {
+  const dt = 1 / 60;
+  for (const p of G.confetti) { p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt; p.vx += Math.sin(G.t * 3 + p.rot) * 20 * dt; }
+  G.confetti = G.confetti.filter(p => p.y < CH + 30);
+}
+function drawConfetti() {
+  for (const p of G.confetti) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); }
 }
 function drawEmpty(cx, baseY, s, active) {
   ctx.save(); ctx.translate(cx, baseY);
@@ -961,6 +1032,7 @@ function boot() {
   ui.titleTwist.classList.toggle('golden', plan.golden);
   ui.titlePractice.classList.add('hidden');
   ui.title.classList.remove('hidden');
+  rotateTitleTip();
   refreshCountdowns();
 }
 function refreshCountdowns() {
@@ -975,10 +1047,22 @@ setInterval(() => {
   refreshCountdowns();
 }, 1000);
 let toastT2 = null;
-ui.start.addEventListener('click', e => { e.preventDefault(); Sfx.init(); startEvening(); });
-ui.titlePractice.addEventListener('click', e => { e.preventDefault(); Sfx.init(); startEvening('practice'); });
-ui.again.addEventListener('click', e => { e.preventDefault(); Sfx.init(); startEvening('debug'); });
-ui.practice.addEventListener('click', e => { e.preventDefault(); Sfx.init(); startEvening('practice'); });
+function randomTip() { return TIPS[Math.floor(Math.random() * TIPS.length)]; }
+function rotateTitleTip() { if (G.state === 'title') ui.titleTip.textContent = randomTip(); }
+setInterval(rotateTitleTip, 6000);
+function loadThen(fn) {
+  hideScreens(); ui.loading.classList.remove('hidden');
+  ui.loadTip.textContent = randomTip(); ui.loadFill.style.width = '0%';
+  const t0 = performance.now(), dur = 1400;
+  Sfx.tone(440, 0.08, 'triangle', 0.1); Sfx.tone(660, 0.08, 'triangle', 0.1, 0, 0.5); Sfx.tone(880, 0.1, 'triangle', 0.12, 0, 1.0);
+  const step = () => { const k = Math.min(1, (performance.now() - t0) / dur); ui.loadFill.style.width = Math.round(k * 100) + '%'; if (k < 1) requestAnimationFrame(step); else { ui.loading.classList.add('hidden'); fn(); } };
+  requestAnimationFrame(step);
+}
+window.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('button')) Sfx.tone(1500, 0.03, 'square', 0.05); }, { passive: true });
+ui.start.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening()); });
+ui.titlePractice.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening('practice')); });
+ui.again.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening('debug')); });
+ui.practice.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening('practice')); });
 ui.today.addEventListener('click', e => { e.preventDefault(); boot(); });
 ui.share.addEventListener('click', e => { e.preventDefault(); if (G.result) shareText(shareTextFor(G.result), toast); });
 ui.stats.addEventListener('click', e => { e.preventDefault(); showStats(); });
@@ -994,5 +1078,5 @@ function frame(now) {
 resize(); boot();
 requestAnimationFrame(frame);
 
-window.LOBBY = { G, startEvening, endEvening, Store, boot, shareTextFor, planEvening, step(ms) { tick(ms / 1000); renderHud(); drawScene(); } };
+window.LOBBY = { G, startEvening, endEvening, Store, boot, shareTextFor, planEvening, unlock, step(ms) { tick(ms / 1000); renderHud(); drawScene(); } };
 })();
