@@ -79,9 +79,8 @@ function makeFriend(id) {
 }
 
 function startEvening(mode) {
-  G.mode = mode || (Daily.debug ? 'debug' : 'official');
+  G.mode = Daily.debug ? 'debug' : 'play';
   G.day = Daily.todayNumber();
-  if (G.mode === 'official' && Store.result(G.day)) { boot(); return; }
   G.rng = new Rng(Daily.seedFor(G.day, 0));
   G.evening = planEvening(G.day); G.serverDown = 0;
   G.t = 0; G.clock = 0; G.vibe = 100; G.winT = 0; G.shake = 0; G.matchT = 0; G.matchLine = 0; G.result = null; G.rcCooldown = 0;
@@ -95,13 +94,12 @@ function startEvening(mode) {
   // Justin is already in the lobby at 9:00pm. He is always in the lobby.
   for (const id of ROSTER) if (FRIENDS[id].neverLeaves) { const f = G.friends[id]; setOnline(f, true); joinLobby(f, true); }
   G.state = 'playing';
-  if (G.mode === 'official') Store.markInProgress(G.day);
   ui.title.classList.add('hidden'); ui.result.classList.add('hidden'); ui.statsScreen.classList.add('hidden'); ui.app.classList.remove('hidden');
   ui.stage.classList.remove('night', 'match');
   notice('Party created · need ' + needed() + ' ready');
   if (G.evening.golden) { banner('✨ GOLDEN EVENING ✨', 'good', 3.5); spawnConfetti(80, ['#ffd23f', '#ffe066', '#fff3b0', '#ffb800']); notice('Golden Evening: everyone is on and in a good mood.'); }
   else if (G.evening.twist) notice('Tonight: ' + G.evening.twist.text);
-  if (ui.modeTag) { ui.modeTag.textContent = G.mode === 'practice' ? 'PRACTICE' : G.mode === 'debug' ? 'DEBUG · EVENING #' + G.day : ''; ui.modeTag.classList.toggle('hidden', G.mode === 'official'); }
+  if (ui.modeTag) { ui.modeTag.textContent = G.mode === 'debug' ? 'DEBUG · EVENING #' + G.day : ''; ui.modeTag.classList.toggle('hidden', G.mode !== 'debug'); }
   buildSlots(); buildList(); resize();
 }
 
@@ -386,12 +384,12 @@ function endEvening(kind) {
   if (kind !== 'win') { banner(kind === 'vibe' ? 'Everyone hopped off.' : "It's 1am.", 'bad', 3); Sfx.tone(220, 0.8, 'sawtooth', 0.2, 80); }
   closeMenu();
   checkEndAchievements(G.result);
-  if (G.mode === 'official') Store.record(G.day, G.result, applyStats);
+  if (G.mode !== 'debug') { applyStats(Store.stats, G.result, G.day); Store.data.runs = (Store.data.runs || 0) + 1; Store.save(); }
   setTimeout(() => showResult(G.result, G.mode), kind === 'win' ? 800 : 2200);
 }
 function applyStats(s, r, day) {
   s.evenings++;
-  if (r.kind === 'win') { s.matches++; s.streak = s.lastDay === day - 1 ? s.streak + 1 : 1; if (s.streak > s.bestStreak) s.bestStreak = s.streak; }
+  if (r.kind === 'win') { s.matches++; s.streak++; if (s.streak > s.bestStreak) s.bestStreak = s.streak; }
   else s.streak = 0;
   if (r.lobbyMinutes > s.longestLobby) s.longestLobby = r.lobbyMinutes;
   if (r.shaun && r.shaun.withMatch) s.shaunMatches++;
@@ -435,12 +433,12 @@ function hideScreens() { for (const s of [ui.title, ui.result, ui.statsScreen, u
 function showResult(r, mode) {
   hideScreens();
   G.state = 'over'; G.shownDay = r.day;
-  const practice = mode === 'practice', debug = mode === 'debug', win = r.kind === 'win';
+  const debug = mode === 'debug', win = r.kind === 'win';
   ui.resultDay.textContent = 'Evening #' + r.day;
   ui.resultTitle.textContent = win ? 'MATCH FOUND' : r.kind === 'vibe' ? 'GN BOYS' : "IT'S 1AM";
   ui.resultTitle.classList.toggle('lose', !win);
-  ui.resultTag.classList.toggle('hidden', !(practice || debug));
-  ui.resultTag.textContent = practice ? 'PRACTICE — NOT COUNTED' : 'DEBUG — NOT COUNTED';
+  ui.resultTag.classList.toggle('hidden', !debug);
+  ui.resultTag.textContent = 'DEBUG — NOT COUNTED';
   ui.resultBig.innerHTML = win ? `Lobby: ${fmtDur(r.lobbyMinutes)}. Match: ${fmtDur(r.matchMinutes)}.<br><span style="font-weight:600;color:#c7cdf0">${pick(new Rng(r.day), RESULT_LINES.win)}</span>`
     : `${r.kind === 'vibe' ? RESULT_LINES.vibe : RESULT_LINES.time}<br><span style="font-weight:600;color:#c7cdf0">Lobby: ${fmtDur(r.lobbyMinutes)}. Match: never.</span>`;
   const rows = [];
@@ -460,10 +458,10 @@ function showResult(r, mode) {
   if (r.golden) rows.push(['✨ Golden Evening', 'yes']);
   else if (r.twist) rows.push(['🎲 Twist', r.twist]);
   ui.resultBody.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><span>${v}</span></div>`).join('');
-  ui.share.classList.toggle('hidden', practice || debug);
-  ui.practice.classList.toggle('hidden', debug);
-  ui.today.classList.toggle('hidden', !practice);
-  ui.again.classList.toggle('hidden', !debug);
+  ui.share.classList.toggle('hidden', debug);
+  ui.practice.classList.add('hidden');
+  ui.today.classList.add('hidden');
+  ui.again.classList.remove('hidden');
   ui.result.classList.remove('hidden');
   refreshCountdowns();
 }
@@ -487,7 +485,7 @@ function showStats() {
   const rate = s.evenings ? Math.round(100 * s.matches / s.evenings) : 0;
   const rows = [['Evenings played', s.evenings], ['Matches started', s.matches], ['Win rate', rate + '%'], ['Longest lobby', fmtDur(s.longestLobby)],
     ['Matches with Shaun', s.shaunMatches], ['Longest time keeping Shaun', fmtDur(s.shaunLongest)], ['Parker AFK, all-time', s.parkerAfk], ['Andre outbursts, all-time', s.andreOutbursts],
-    ['Current streak', s.streak], ['Best streak', s.bestStreak]];
+    ['Current win streak', s.streak], ['Best win streak', s.bestStreak]];
   ui.statsBody.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join('');
   const got = Store.data.achievements || {};
   const n = Object.keys(got).length;
@@ -1017,13 +1015,6 @@ function drawFriend(f, cx, baseY, s) {
 function boot() {
   const n = Daily.todayNumber();
   G.day = n; G.shownDay = n;
-  if (!Daily.debug) {
-    if (Store.data.inProgress === n && !Store.result(n)) {
-      Store.record(n, { kind: 'vibe', day: n, mode: 'official', lobbyMinutes: 0, matchMinutes: 0, screams: 0, leaves: 0, kicks: 0, outbursts: 0, unreadies: 0, caught: false, crashed: false, parkerAfk: 0, issues: {}, lines: {}, golden: false, twist: 'You closed the app mid-evening. Everyone hopped off.', shaun: null }, applyStats);
-    }
-    const done = Store.result(n);
-    if (done) { showResult(done, 'official'); return; }
-  }
   hideScreens();
   G.state = 'title';
   const plan = planEvening(n);
@@ -1037,9 +1028,9 @@ function boot() {
 }
 function refreshCountdowns() {
   if (Daily.debug) { ui.titleNext.textContent = 'Debug evening — results are not saved'; ui.resultNext.textContent = 'Debug evening — not saved'; return; }
-  const t = 'Next evening in ' + Daily.countdownText();
-  ui.titleNext.textContent = 'One evening counts per day · ' + t;
-  ui.resultNext.textContent = G.mode === 'practice' ? 'Practice — nothing is saved' : t;
+  const t = 'Same evening for everyone today · next one in ' + Daily.countdownText();
+  ui.titleNext.textContent = t;
+  ui.resultNext.textContent = t;
 }
 setInterval(() => {
   if (G.state === 'playing' || G.state === 'match') return;
@@ -1060,10 +1051,7 @@ function loadThen(fn) {
 }
 window.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('button')) Sfx.tone(1500, 0.03, 'square', 0.05); }, { passive: true });
 ui.start.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening()); });
-ui.titlePractice.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening('practice')); });
-ui.again.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening('debug')); });
-ui.practice.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening('practice')); });
-ui.today.addEventListener('click', e => { e.preventDefault(); boot(); });
+ui.again.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening()); });
 ui.share.addEventListener('click', e => { e.preventDefault(); if (G.result) shareText(shareTextFor(G.result), toast); });
 ui.stats.addEventListener('click', e => { e.preventDefault(); showStats(); });
 ui.statsClose.addEventListener('click', e => { e.preventDefault(); ui.statsScreen.classList.add('hidden'); });
