@@ -48,7 +48,7 @@ function makeFriend(id) {
     online: false, onlineAt: G.rng.range(w[0], w[1]),
     inLobby: false, ready: false, readyT: 0, invitePending: 0, reinviteT: 0, annoyed: 0,
     patience: def.patience ? def.patience.max : 0, anger: 0, screaming: 0,
-    cd: { ping: 0, text: 0, call: 0, calm: 0 }, chatterT: G.rng.range(8, 20), talkT: 0, phase: G.rng.next() * 6.28, blink: 0,
+    cd: { ping: 0, text: 0, call: 0, calm: 0 }, chatterT: G.rng.range(30, 60), talkT: 0, phase: G.rng.next() * 6.28, blink: 0,
     status: 'Offline', joinedAt: 0, leaves: 0,
     readyHold: 0, waitT: 0, complainT: 0, mood: 'ok', distractT: G.rng.range(10, 18), falseReady: 0, bubble: '', bubbleKind: '', bubbleT: 0,
     outburstT: def.outburst ? G.rng.range(def.outburst.every[0], def.outburst.every[1]) : 0, ignoredT: 0,
@@ -69,7 +69,7 @@ function startEvening(mode) {
   ui.title.classList.add('hidden'); ui.result.classList.add('hidden'); ui.app.classList.remove('hidden');
   ui.stage.classList.remove('night', 'match');
   ui.subs.innerHTML = '';
-  say(null, 'Party created. Mode: SQUADS. ' + needed() + ' needed.');
+  notice('Party created · need ' + needed() + ' ready');
   buildSlots(); buildList(); resize();
 }
 
@@ -78,15 +78,15 @@ function startEvening(mode) {
 // ---------------------------------------------------------------------------
 // System events go to the feed in the friends panel so they never cover the voice chat.
 function notice(text) {
-  G.notices.push(text); if (G.notices.length > 3) G.notices.shift();
+  G.notices.push(text); if (G.notices.length > 2) G.notices.shift();
   ui.feed.innerHTML = G.notices.map(n => `<div>${esc(n)}</div>`).join('');
 }
-function say(f, text, kind) {
+function say(f, text, kind, noBubble) {
   if (!text) return;
   if (!f) return notice(text);
-  f.bubble = text; f.bubbleKind = kind || ''; f.bubbleT = 2.8;
+  if (!noBubble) { f.bubble = text; f.bubbleKind = kind || ''; f.bubbleT = 3; }
   G.subs.push({ who: f ? f.name : null, text, kind: kind || (f ? '' : 'sys'), color: f ? f.def.look.shirt : '' });
-  if (G.subs.length > 3) G.subs.shift();
+  if (G.subs.length > 2) G.subs.shift();
   if (f) { f.talkT = 1.2; G.log.lines[f.id] = (G.log.lines[f.id] || 0) + 1; }
   ui.subs.innerHTML = G.subs.map(s => `<div class="line ${s.kind}">${s.who ? `<b style="color:${s.color}">${s.who}:</b>` : ''}${esc(s.text)}</div>`).join('');
 }
@@ -135,9 +135,9 @@ function leaveLobby(f, reason) {
 }
 function setReady(f, on, quiet) {
   if (f.ready === on) return;
-  f.ready = on; f.waitT = 0;
+  f.ready = on; f.waitT = 0; f.complainT = 0;
   if (on) { const h = f.def.readyHold || [20, 30]; f.readyHold = G.rng.range(h[0], h[1]) * (1 - 0.2 * f.annoyed);
-    f.falseReady = G.rng.chance(0.18 + 0.12 * f.def.chaos) ? G.rng.range(2, 6) : 0; if (!quiet) say(f, pick(G.rng, f.def.lines.ready)); G.vibe = clamp(G.vibe + 8, 0, 100); Sfx.tone(990, 0.1, 'sine', 0.15, 1480); }
+    f.falseReady = G.rng.chance(0.28 + 0.12 * f.def.chaos) ? G.rng.range(2, 6) : 0; const recent = G.t - (f.lastReadyLine || -99) < 25; if (!quiet && !recent) { say(f, pick(G.rng, f.def.lines.ready)); f.lastReadyLine = G.t; } G.vibe = clamp(G.vibe + 8, 0, 100); Sfx.tone(990, 0.1, 'sine', 0.15, 1480); }
   else { G.winT = 0; if (!quiet) Sfx.tone(300, 0.15, 'square', 0.08, 200); }
 }
 // Someone who was ready gives up waiting: un-readies, complains, and sours the room.
@@ -204,13 +204,13 @@ function tick(dt) {
     else if (f.falseReady > 0) { f.falseReady -= dt; if (f.falseReady <= 0) { giveUp(f); continue; } }
     else if (anyNotReady || members.length < needed()) {
       f.waitT += dt; f.readyHold -= dt;
-      f.complainT -= dt;
-      if (f.complainT <= 0 && f.waitT > 4) { f.complainT = G.rng.range(6, 10); say(f, pick(G.rng, f.def.lines.wait), 'complain'); }
+      if (f.waitT > 6 && f.complainT === 0) { f.complainT = 1; say(f, pick(G.rng, f.def.lines.wait), 'complain'); }
+      if (f.readyHold < 3 && f.complainT === 1) { f.complainT = 2; say(f, pick(G.rng, f.def.lines.annoyed), 'complain'); }
       if (f.readyHold <= 0) { giveUp(f); continue; }
     }
     // periodic distractions, more for chaotic friends
     f.distractT -= dt;
-    if (f.distractT <= 0) { f.distractT = G.rng.range(12, 22); if (f.ready && G.rng.chance(0.12 * f.def.chaos)) { giveUp(f); continue; } }
+    if (f.distractT <= 0) { f.distractT = G.rng.range(10, 18); if (f.ready && G.rng.chance(0.1 + 0.15 * f.def.chaos)) { giveUp(f); continue; } }
     // mood from patience
     if (f.def.patience) {
       const low = f.patience < 35;
@@ -235,7 +235,7 @@ function tick(dt) {
       const a = f.def.anger;
       if (f.screaming > 0) {
         f.screaming -= dt; G.vibe -= 2.5 * dt; G.shake = Math.max(G.shake, 0.3);
-        if (f.screaming <= 0) { f.anger = a.max * 0.35; say(f, 'im fine.'); }
+        if (f.screaming <= 0) { f.anger = a.max * 0.35; f.bubble = 'im fine.'; f.bubbleKind = ''; f.bubbleT = 2; }
       } else {
         let rise = a.rise * (anyNotReady ? 1 : 0.25);
         if (members.length < needed()) rise *= 1.2;
@@ -243,9 +243,9 @@ function tick(dt) {
         if (f.anger >= a.max) startScream(f);
       }
     }
-    // idle chatter
+    // idle chatter: rare, and never while something is already going on
     f.chatterT -= dt;
-    if (f.chatterT <= 0) { f.chatterT = G.rng.range(10, 24); if (!f.screaming) say(f, pick(G.rng, f.def.lines.idle)); }
+    if (f.chatterT <= 0) { f.chatterT = G.rng.range(40, 75); if (!f.screaming && f.ready && !anyNotReady) say(f, pick(G.rng, f.def.lines.idle), '', true); }
   }
 
   // party vibe

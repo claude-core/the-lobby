@@ -42,7 +42,7 @@ const FRIENDS = {
     name: 'Matt', chaos: 1,
     look: { skin: 'fair', hair: 'medium', hairColor: '#d1542a', shirt: '#3b7dd8', pants: '#34495e', freckles: true },
     online: { window: [0, 15] },
-    readyTime: [3, 6], readyHold: [28, 40],
+    readyTime: [3, 6], readyHold: [16, 26],
     patience: { max: 100, drain: 0.7 },
     joinDelay: [2, 4],
     lines: {
@@ -66,7 +66,7 @@ const FRIENDS = {
     name: 'Justin', chaos: 3,
     look: { skin: 'medium', hair: 'short', hairColor: '#2a1c14', shirt: '#e74c3c', pants: '#1f2a44' },
     online: { window: [0, 0] },                         // already there. always there.
-    readyTime: [2, 4], readyHold: [10, 16],
+    readyTime: [2, 4], readyHold: [8, 13],
     patience: null,                                     // no patience bar: an ANGER meter instead
     anger: { max: 100, rise: 2.4, screamSeconds: 7, calm: 40 },
     joinDelay: [0, 1],
@@ -93,9 +93,9 @@ const FRIENDS = {
     name: 'Andre', chaos: 3,
     look: { skin: 'tan', hair: 'short', hairColor: '#1b1b1b', shirt: '#27ae60', pants: '#2c3e50' },
     online: { window: [8, 35] },
-    readyTime: [4, 9], readyHold: [12, 20],
+    readyTime: [4, 9], readyHold: [9, 15],
     patience: { max: 100, drain: 1.2 },
-    outburst: { every: [18, 32], ignoreSeconds: 6 },
+    outburst: { every: [13, 24], ignoreSeconds: 6 },
     joinDelay: [2, 5],
     lines: {
       join: ['BOYYYSSSSS', 'boys. BOYS.'],
