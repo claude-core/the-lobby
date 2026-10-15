@@ -266,3 +266,58 @@ const RESULT_LINES = {
   vibe: 'Everyone hopped off. gn boys.',
   time: '1am. Everyone has work tomorrow.',
 };
+
+// ---------------------------------------------------------------------------
+// Evenings: daily twists, the Golden Evening, and random events.
+// Twist effects the engine understands:
+//   online:      { friend, window }      override a friend's online window (minutes after 9pm)
+//   skip:        { friend, issue }       that issue can't happen tonight
+//   weight:      { friend, issue, mul }  make an issue more/less likely
+//   angerMul, patienceMul                scale Justin's anger rise / everyone's patience drain
+//   shaunSeconds: [a, b]                 Shaun's online window in real seconds
+//   sneakChance: 0..1                    Nicky C sneaking chance
+// ---------------------------------------------------------------------------
+const TWISTS = [
+  { id: 'ranked', text: 'Ranked night. Everyone is tense.', effects: { patienceMul: 1.25, angerMul: 1.2 } },
+  { id: 'parker-ontime', text: "Parker swears he's on time tonight.", effects: { online: { friend: 'parker', window: [3, 12] } } },
+  { id: 'wife-away', text: "Andre's wife is out of town.", effects: { skip: { friend: 'andre', issue: 'movie' } } },
+  { id: 'shaun-maybe', text: 'Shaun said he might hop on.', effects: { online: { friend: 'shaun', window: [15, 70] }, shaunSeconds: [70, 90] } },
+  { id: 'taxes-done', text: 'Nicky B says his taxes are done. Says.', effects: { weight: { friend: 'nickyb', issue: 'taxes', mul: 0.15 } } },
+  { id: 'coffee', text: 'Justin had a coffee at 8pm.', effects: { angerMul: 1.4 } },
+  { id: 'soju', text: 'Matt brought the Soju.', effects: { weight: { friend: 'matt', issue: 'soju', mul: 8 } } },
+  { id: 'offline', text: 'Nicky C is "offline".', effects: { sneakChance: 1 } },
+  { id: 'gummies', text: 'Nicky B found the gummies.', effects: { weight: { friend: 'nickyb', issue: 'baked', mul: 6 } } },
+  { id: 'chill', text: 'Chill night. Allegedly.', effects: { patienceMul: 0.85 } },
+  { id: 'dogs', text: "Andre's dogs have been weird all day.", effects: { weight: { friend: 'andre', issue: 'dogs', mul: 5 } } },
+  { id: 'power', text: "There's a storm by Parker's place.", effects: { weight: { friend: 'parker', issue: 'power', mul: 6 } } },
+];
+
+const GOLDEN = {
+  chance: 0.05,                           // about 1 in 20 evenings
+  text: '✨ GOLDEN EVENING ✨ Everyone is on. Everyone is happy. Even Shaun.',
+  patienceMul: 0.55, angerMul: 0.6, outburstMul: 1.7,
+  shaunSeconds: [120, 150],
+};
+
+const EVENTS = {
+  maintenance: { chance: 0.25, window: [50, 190], minutes: 10, banner: 'SERVER MAINTENANCE', notice: 'Servers down for maintenance. Everyone dropped to the friends list.', back: 'Servers are back. Re-invite everyone.' },
+  crash: { chance: 0.08, minutes: 5, banner: 'GAME CRASHED ON READY', notice: 'The game crashed the moment everyone readied up. Classic.' },
+};
+
+// Lines for the share card.
+const SHARE = {
+  title: '🛋️ THE LOBBY #{day}',
+  win: '⏳ Lobby {lobby} · 🎮 Match {match}',
+  loseVibe: '💀 Everyone hopped off. gn boys.',
+  loseTime: '🕐 1am. Everyone has work tomorrow.',
+  lobbyOnly: '⏳ Lobby {lobby}',
+  shaunMatch: '👑 PLAYED WITH SHAUN',
+  shaunLeft: '👋 Shaun popped in for {min} and left',
+  shaunNever: '👻 Shaun never showed',
+  parker: '🚽 Parker AFK {n} times',
+  andre: '📢 Andre: "LISTEN TO ME" ×{n}',
+  justin: '😤 Justin screamed ×{n}',
+  caught: '🕵️ Caught Nicky C',
+  tooney: '✅ TOONEY TIME',
+  golden: '✨ Golden Evening',
+};

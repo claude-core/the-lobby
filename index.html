@@ -36,6 +36,7 @@
     <div id="sky"><div class="sun"></div><div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div></div>
     <canvas id="chars"></canvas>
     <div id="slots"></div>
+    <div id="mode-tag" class="hidden"></div>
     <div id="banner" class="hidden"></div>
     <div id="readycheck-wrap">
       <button id="ready-check" type="button">READY CHECK<small id="ready-count">0 / 5</small></button>
@@ -57,28 +58,55 @@
 <div id="rotate"><div><div class="phone">📱</div>Rotate your phone<br><small>The Lobby is a landscape game.</small></div></div>
 
 <div id="screen-title" class="screen">
-  <div class="panel">
-    <h1>THE LOBBY</h1>
-    <div class="sub" id="title-day">Evening #1</div>
-    <div class="twist" id="title-twist"></div>
-    <p class="blurb">Seven friends. Five slots. One match. You're not in the game — you're the one trying to get everyone else into it.</p>
-    <ul class="howto">
-      <li><b>Invite</b> friends from the list when they come online.</li>
-      <li>Tap anyone in the lobby to <b>ping, text, call</b> or kick them.</li>
-      <li>Get <b>5 ready at once</b> before the Party Vibe dies or it hits 1am. Everyone has issues. Shaun shows up once.</li>
-    </ul>
-    <button class="big" id="btn-start" type="button">Start the evening</button>
-    <div class="fine" id="title-next">Phase 2 test build — all seven friends</div>
+  <div class="panel wide">
+    <div class="col">
+      <h1>THE LOBBY</h1>
+      <div class="sub" id="title-day">Evening #1</div>
+      <div class="twist" id="title-twist"></div>
+      <button class="big" id="btn-start" type="button">Start the evening</button>
+      <button class="big alt hidden" id="btn-title-practice" type="button">Practice tonight</button>
+      <div class="fine" id="title-next"></div>
+    </div>
+    <div class="col howto-col">
+      <div class="howto-title">HOW THIS WORKS</div>
+      <ul class="howto">
+        <li>Seven friends, <b>five slots</b>. Invite people from the list, then tap anyone to ping, text, call, fix their problem, or kick them.</li>
+        <li>Everyone in the lobby has a <b class="g">green PATIENCE bar</b>. Keep it <b>UP</b>. When it empties, they leave.</li>
+        <li>Justin is the opposite: he has a <b class="r">red ANGER bar</b>. Keep it <b>DOWN</b>. When it fills, he screams and everyone suffers. He never leaves.</li>
+        <li>Win: <b>5 READY at the same time</b> for 3 seconds. Lose: the Party Vibe hits zero, or it's 1am.</li>
+        <li>Shaun shows up once a night. Don't blow it.</li>
+      </ul>
+    </div>
   </div>
 </div>
 
 <div id="screen-result" class="screen hidden">
+  <div class="panel wide">
+    <div class="col">
+      <div class="sub" id="result-day">Evening #1</div>
+      <h1 id="result-title">MATCH FOUND</h1>
+      <div class="tag hidden" id="result-tag">PRACTICE — NOT COUNTED</div>
+      <div id="result-big"></div>
+      <div class="btn-row">
+        <button class="big" id="btn-share" type="button">Share</button>
+        <button class="big alt" id="btn-stats" type="button">Stats</button>
+      </div>
+      <button class="big alt" id="btn-practice" type="button">Practice tonight</button>
+      <button class="big alt hidden" id="btn-today" type="button">Back to tonight's result</button>
+      <button class="big hidden" id="btn-again" type="button">Run it again</button>
+      <div class="fine" id="result-next"></div>
+    </div>
+    <div class="col">
+      <div id="result-body"></div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-stats" class="screen hidden">
   <div class="panel">
-    <div class="sub" id="result-day">Evening #1</div>
-    <h1 id="result-title">MATCH FOUND</h1>
-    <div id="result-body"></div>
-    <button class="big" id="btn-again" type="button">Play again</button>
-    <div class="fine" id="result-next"></div>
+    <h1 class="small">STATS</h1>
+    <div id="stats-body"></div>
+    <button class="big alt" id="btn-stats-close" type="button">Close</button>
   </div>
 </div>
 

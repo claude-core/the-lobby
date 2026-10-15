@@ -142,7 +142,7 @@ h1.lose { color: #ff8a8a; text-shadow: 0 3px 0 #5a1a1a; }
   #app { grid-template-rows: 36px 1fr; grid-template-columns: 170px 1fr; gap: 4px; }
   .tag .icon { font-size: 18px; } .tag .name { font-size: 12px; }
   #banner { font-size: 24px; }
-    h1 { font-size: 30px; } .blurb, .howto { display: none; }
+    h1 { font-size: 30px; }
 }
 
 #feed { padding: 4px 8px; border-top: 1px solid var(--line); font-size: 10.5px; line-height: 1.3; color: var(--dim); font-style: italic; min-height: 32px; }
@@ -171,3 +171,36 @@ h1.lose { color: #ff8a8a; text-shadow: 0 3px 0 #5a1a1a; }
 .slot.codered .tag .name { color: #ff8a8a; }
 .dot.blink { animation: dotblink 1s steps(2) infinite; }
 @keyframes dotblink { to { opacity: .3; } }
+
+.panel.wide { max-width: 760px; display: grid; grid-template-columns: 1fr 1.15fr; gap: 14px 22px; text-align: left; align-items: center; }
+.panel.wide .col { min-width: 0; }
+.panel.wide h1 { font-size: 34px; letter-spacing: 5px; }
+.panel.wide .sub { margin: 2px 0 4px; }
+.panel.wide button.big { max-width: none; margin-top: 8px; padding: 11px; font-size: 17px; }
+.howto-title { font-size: 11px; letter-spacing: 3px; color: var(--dim); font-weight: 900; margin-bottom: 4px; }
+.howto-col .howto { display: block; padding-left: 16px; margin: 0; font-size: 12.5px; line-height: 1.35; }
+.howto-col .howto li { margin-bottom: 5px; }
+.howto b.g { color: var(--good); } .howto b.r { color: var(--bad); }
+.twist { color: var(--accent); font-weight: 700; }
+.twist.golden { color: #ffe066; text-shadow: 0 0 12px rgba(255,210,63,.6); }
+button.big.alt { background: linear-gradient(#4e5a84,#2f3860); color: #fff; box-shadow: 0 4px 0 #1b2140; }
+button.big.alt:active { box-shadow: 0 2px 0 #1b2140; }
+.btn-row { display: flex; gap: 8px; }
+.btn-row button.big { flex: 1; }
+h1.small { font-size: 28px; }
+.tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--accent); border: 1px solid rgba(255,210,63,.5); border-radius: 6px; padding: 2px 8px; margin: 4px 0; }
+#result-big { font-size: 15px; font-weight: 800; color: #fff; margin: 4px 0; line-height: 1.35; }
+#result-body { font-size: 12.5px; line-height: 1.45; }
+#result-body .row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+#result-body .row span:last-child { text-align: right; color: #fff; font-weight: 700; }
+#stats-body { text-align: left; font-size: 13px; line-height: 1.6; color: #e4e8ff; margin: 6px auto 12px; max-width: 420px; }
+#stats-body .row { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.08); padding: 1px 4px; }
+#stats-body .row b { color: #fff; font-variant-numeric: tabular-nums; }
+@media (max-height: 420px) {
+  .panel.wide h1 { font-size: 26px; }
+  .howto-col .howto { font-size: 11px; line-height: 1.3; }
+  .panel.wide button.big { padding: 9px; font-size: 15px; margin-top: 4px; }
+  #result-body { font-size: 11.5px; line-height: 1.35; }
+}
+
+#mode-tag { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); font-size: 10px; font-weight: 900; letter-spacing: 3px; color: var(--accent); background: rgba(0,0,0,.45); padding: 2px 8px; border-radius: 6px; pointer-events: none; z-index: 3; }
