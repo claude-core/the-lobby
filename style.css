@@ -224,3 +224,14 @@ h1.small { font-size: 28px; }
 #stage { will-change: transform; }
 #toast.ach { color: #fff; background: linear-gradient(#5a4a1a,#2a2410); border: 1px solid rgba(255,210,63,.6); font-size: 13px; max-width: 80vw; white-space: normal; text-align: center; }
 @media (max-height: 420px) { .stats-cols { max-height: 54vh; } #ach-body { max-height: 54vh; } }
+
+#screen-stats { background: rgba(10,12,24,.97); }
+#screen-stats .panel { max-width: 720px; }
+.stats-cols { max-height: 62vh; }
+#stats-body { overflow-y: auto; max-height: 62vh; touch-action: pan-y; font-size: 12px; line-height: 1.45; }
+#ach-body { font-size: 11px; }
+@media (max-height: 420px) {
+  #screen-stats h1.small { font-size: 20px; margin-bottom: 2px; }
+  .stats-cols { max-height: 56vh; } #stats-body, #ach-body { max-height: 56vh; }
+  #screen-stats button.big { padding: 7px; font-size: 14px; margin-top: 6px; }
+}
