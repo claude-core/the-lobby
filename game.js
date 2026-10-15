@@ -723,7 +723,7 @@ function renderHud() {
     const I = f.issue;
     icon.textContent = f.screaming > 0 ? '📢' : (f.afk || f.broken) && I ? I.def.icon : f.mood === 'annoyed' && !f.ready ? '😤' : f.ready ? '✅' : I && I.def.type !== 'deadline' ? I.def.icon : '🔴';
     name.textContent = f.name;
-    let txt = f.screaming > 0 ? 'SCREAMING' : f.afk && I ? 'AFK · ' + I.label.toUpperCase() : f.broken && I ? I.label.toUpperCase() : waiting ? 'READY · WAITING…' : f.mood === 'annoyed' ? (f.ready ? 'READY · ANNOYED' : 'ANNOYED') : f.ready ? 'READY' : 'NOT READY';
+    let txt = f.screaming > 0 ? 'SCREAMING' : f.afk && I ? 'AFK · ' + I.def.label.toUpperCase() : f.broken && I ? I.def.label.toUpperCase() : waiting ? 'READY · WAITING…' : f.mood === 'annoyed' ? (f.ready ? 'READY · ANNOYED' : 'ANNOYED') : f.ready ? 'READY' : 'NOT READY';
     if (I && I.def.type === 'deadline') txt += ' · ' + I.def.icon + ' ' + fmtClock(f.deadlineAt);
     if (f.def.codeRed) txt = 'CODE RED · ' + txt;
     st.textContent = txt;
