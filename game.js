@@ -1279,10 +1279,11 @@ const Guide = {
 
 // ---------------------------------------------------------------------------
 // Background music: a quiet synth loop that gets faster and tenser as the
-// Party Vibe drops, and turns bright during the match.
+// Party Vibe drops, and turns bright during the match. While a friend whose
+// anger has `screamMusic: 'metal'` is screaming, it switches to metal.
 // ---------------------------------------------------------------------------
 const Music = {
-  on: false, timer: null, next: 0, step: 0,
+  on: false, timer: null, next: 0, step: 0, mode: 'calm', bus: null,
   start() {
     Sfx.init(); if (!Sfx.ctx) return;
     this.on = true; this.next = Sfx.ctx.currentTime + 0.15;
@@ -1291,11 +1292,47 @@ const Music = {
   stop() { this.on = false; },
   tension() { return G.state === 'match' ? 0 : clamp((55 - G.vibe) / 45, 0, 1); },
   stepLen() { return G.state === 'match' ? 0.17 : 0.3 - 0.09 * this.tension(); },
+  metalNow() { return G.state === 'playing' && lobbyMembers().some(m => m.screaming > 0 && m.def.anger && m.def.anger.screamMusic === 'metal'); },
   pump() {
     const c = Sfx.ctx;
     if (!this.on || !c || c.state !== 'running') { if (c) this.next = c.currentTime + 0.1; return; }
+    const mode = this.metalNow() ? 'metal' : 'calm';
+    if (mode !== this.mode) { this.mode = mode; this.step = 0; this.next = c.currentTime + 0.03; }   // switch on the spot, from the downbeat
     if (this.next < c.currentTime) this.next = c.currentTime + 0.05;
-    while (this.next < c.currentTime + 0.25) { this.note(this.step++, this.next - c.currentTime); this.next += this.stepLen(); }
+    while (this.next < c.currentTime + 0.25) {
+      const d = this.next - c.currentTime;
+      if (this.mode === 'metal') { this.metal(this.step++, d); this.next += 0.075; }
+      else { this.note(this.step++, d); this.next += this.stepLen(); }
+    }
+  },
+  // Distortion bus for the guitar: oscillators -> waveshaper -> lowpass -> master.
+  guitarBus() {
+    if (this.bus) return this.bus;
+    const c = Sfx.ctx, sh = c.createWaveShaper(), n = 1024, curve = new Float32Array(n);
+    for (let k = 0; k < n; k++) { const x = k * 2 / n - 1; curve[k] = Math.tanh(x * 30); }
+    sh.curve = curve; sh.oversample = '2x';
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2800;
+    const g = c.createGain(); g.gain.value = 0.07;
+    sh.connect(lp); lp.connect(g); g.connect(Sfx.master);
+    return (this.bus = sh);
+  },
+  chord(root, dur, d) {
+    const c = Sfx.ctx, t0 = c.currentTime + d, bus = this.guitarBus();
+    for (const mul of [1, 1.5, 2]) {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(root * mul, t0); o.detune.setValueAtTime((Math.random() - 0.5) * 14, t0);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.005); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      o.connect(g); g.connect(bus); o.start(t0); o.stop(t0 + dur + 0.02);
+    }
+  },
+  // Sixteenth notes at 200 bpm: chugging E power chords, double kick, snare on 2 and 4.
+  metal(i, d) {
+    const E = 82.4, riff = [E, E, E, E, E, E, 98, E, E, E, 116.5, 110, E, E, 98, 92.5];
+    const s = i % 16, root = riff[s], accent = root !== E || s === 0;
+    this.chord(root, accent ? 0.14 : 0.06, d);
+    Sfx.tone(70, 0.06, 'sine', 0.16, 38, d);                              // double kick
+    if (s === 4 || s === 12) Sfx.noise(0.14, 0.16, 1800, 0.8, d);        // snare
+    if (s === 0) Sfx.noise(0.5, 0.05, 6500, 0.6, d);                     // crash
   },
   note(i, d) {
     const match = G.state === 'match', ten = this.tension();

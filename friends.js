@@ -123,7 +123,7 @@ const FRIENDS = {
     online: { window: [0, 0] },                             // already there. always there.
     readyTime: [2, 4], readyHold: [12, 19],
     patience: null,                                         // ANGER meter instead of patience
-    anger: { max: 100, rise: 2.4, screamSeconds: 7, calm: 40, afkRise: 1.2 },
+    anger: { max: 100, rise: 2.4, screamSeconds: 7, calm: 40, afkRise: 1.2, screamMusic: 'metal' },   // the music turns to metal while he screams
     joinDelay: [0, 1],
     neverLeaves: true,
     issuesPerEvening: [1, 2],
