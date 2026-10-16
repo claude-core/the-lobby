@@ -34,6 +34,27 @@
 //
 // Lines every friend has: join ready idle leave ping text call wait unready annoyed,
 // plus startled (an outburst made them un-ready) and shushed (a scream did).
+//
+// Signature actions (`actions`): each friend's own moves, shown above Ping/Text/Call.
+//   label, hint, cooldown (real seconds), once (one use per evening),
+//   oncePerIssue (one use per problem), where: 'lobby' (default) | 'offline' | 'any'
+//   needs: { friend: id in the lobby, issue: id active, issueType: type active,
+//            late: id, calm (not mid-outburst), notReady, notAway, timed (away on a timer) }
+//   needText: the subtitle while `needs` aren't met
+//   line: what the friend says. speaker: [who, line] for someone else.
+//   result: shown in the menu. {name} is the friend, {real} his real ETA.
+//   self: { patience, anger, angerMul, readyNow, hold (extra seconds he stays ready),
+//           annoyed, comeOnline, endIssue, shortenPct, reveal, delayOutburst (seconds), checkSneak }
+//   all: { patience, vibe } for everyone else in the lobby
+//   others: { id: { patience, anger, line, outburst, buff } }
+//   buff: { <kind>: value, seconds | minutes, onEnd: { outburst: power, line, achievement } }
+//     kinds: drainMul, angerRiseMul, screamHarmless, muted, noOutburst, sober, yellProof,
+//            promise { line } (he leaves if anyone yells), bet { vibe, lose, win, achievement }
+//   later: { issue, in: [min, max] } schedules one of his issues
+//   risk: { chance, in: [min, max], line, goneStatus } he may leave for the night later
+//   coin: { chance, win: {...}, lose: {...} } each side takes line/self/all/result
+//   backfire: { issues: [...], patience, line } costs patience if one of those issues hits
+//   miss: result when checkSneak finds nothing
 
 const ROSTER = ['shaun', 'matt', 'justin', 'andre', 'nickyb', 'parker', 'nickyc'];
 
@@ -72,6 +93,14 @@ const FRIENDS = {
       appearNotice: 'Shaun is online for the first time in {days} days.',
       matchBanner: 'PLAYED WITH SHAUN 👑',
     },
+    actions: [
+      { id: 'hishaun', label: 'Get Matt to say Hi Shaun', hint: 'big patience boost', needs: { friend: 'matt' }, needText: 'needs Matt in the lobby', cooldown: 40,
+        speaker: ['matt', 'Hi Shaun'], line: 'hi matt', self: { patience: 40 }, result: 'Shaun feels welcome. Matt has never been more useful.' },
+      { id: 'nochange', label: '"Nothing\'s changed, I promise"', hint: 'slower drain · risky', once: true,
+        line: 'oh nice. same as always then', buff: { drainMul: 0.55, seconds: 25 },
+        backfire: { issues: ['update', 'settings'], patience: -30, line: 'you said NOTHING changed' },
+        result: 'He believes you. For now.' },
+    ],
     issues: [
       { id: 'settings', label: 'Settings reset', icon: '⚙️', type: 'afk', minutes: [4, 7], weight: 1,
         lines: { start: ['my settings reset lol. one sec'], end: ['ok fixed'] }, buttons: [] },
@@ -107,6 +136,13 @@ const FRIENDS = {
       greetCodeRed: 'Hi Shaun',
       matchFound: 'Tooney time',
     },
+    actions: [
+      { id: 'tooney', label: '"Tooney?"', hint: 'everyone +patience', cooldown: 45, line: 'Tooney', all: { patience: 8, vibe: 4 },
+        result: 'Everyone feels a little better. Nobody knows why.' },
+      { id: 'soju', label: 'Hand him a soju', hint: 'ready now · soju later', cooldown: 60, needs: { notAway: true }, needText: 'he is away',
+        line: 'Need more soju', self: { readyNow: true, hold: 20 }, later: { issue: 'soju', in: [10, 25] },
+        result: 'Matt is ready. Matt will be very ready later.' },
+    ],
     issues: [
       { id: 'tooney', label: 'Tooney run', icon: '🥤', type: 'afk', minutes: [3, 5], weight: 6,
         lines: { start: ['Tooney'], end: ['Tooney time'] }, buttons: [] },
@@ -145,6 +181,14 @@ const FRIENDS = {
       afkRant: ['{name} HAS BEEN AFK FOR {min} MINUTES', 'IS {name} EVEN HERE', '{name}. {name}. {name}.'],
       caughtSneak: 'YOU PLAYED WITHOUT ME??',
     },
+    actions: [
+      { id: 'drop', label: 'Let him pick the drop', hint: 'anger halved · Andre hates it', cooldown: 40,
+        line: 'FINALLY. WE DROP WHERE I SAY.', self: { angerMul: 0.5 }, others: { andre: { patience: -15, line: 'what. no. THE DAM.' } },
+        result: 'Justin is calmer. Andre is not.' },
+      { id: 'ptt', label: 'Put him on push-to-talk', hint: 'screams are harmless · anger rises faster', cooldown: 60,
+        line: 'WHY IS MY MIC OFF', buff: { screamHarmless: true, angerRiseMul: 1.5, seconds: 30 },
+        result: 'Nobody can hear him scream. He is screaming anyway.' },
+    ],
     issues: [
       { id: 'vote', label: 'Wants a different game', icon: '🗳️', type: 'vote', seconds: 12, weight: 2,
         banner: 'MODE VOTE · answer Justin · {s}s', timeout: { unreadyAll: true }, vibe: 10, timeoutBanner: 'VOTE TIMED OUT · EVERYONE UN-READY',
@@ -186,6 +230,19 @@ const FRIENDS = {
       ignored: ["YOU'RE NOT LISTENING", 'NOBODY LISTENS TO ME'],
       listened: ['thank you. finally.', 'ok. ok. we land hot.'],
     },
+    // Every one of these is about whether anyone is listening to him.
+    actions: [
+      { id: 'mute', label: 'Mute Andre', hint: 'outbursts do nothing · he will notice', cooldown: 60,
+        buff: { muted: true, seconds: 25, onEnd: { outburst: 2, line: 'WAS I MUTED??', achievement: 'muted' } },
+        result: 'Blissful quiet. This will cost you later.' },
+      { id: 'callouts', label: 'Let him make the callouts', hint: 'no outbursts · Justin gets angrier', cooldown: 60,
+        line: 'FINALLY. LISTEN TO ME. THE DAM.', buff: { noOutburst: true, minutes: 30 },
+        others: { justin: { line: 'since when does ANDRE call it', buff: { angerRiseMul: 1.5, minutes: 30 } } },
+        result: 'Andre is in charge now. Justin is furious about it.' },
+      { id: 'seventeen', label: 'Ask about the 17', hint: 'delays his next outburst', needs: { calm: true }, needText: 'too late, he is yelling', cooldown: 45,
+        line: 'SEVENTEEN. he was one shot. ONE.', self: { delayOutburst: 20, patience: 8 },
+        result: 'He told the whole story. His next outburst is a while off.' },
+    ],
     issues: [
       { id: 'dogs', label: 'The dogs peed', icon: '🐕', type: 'afk', minutes: [12, 22], weight: 1,
         lines: { start: ['the dogs peed. brb', 'DOGS. hold on boys'], end: ['ok. pee handled. BOYS.'] },
@@ -224,6 +281,18 @@ const FRIENDS = {
       wait: ['we playing?'], unready: ['hold on, un-ready'], annoyed: ['im about to go to bed'],
       startled: ['huh'], shushed: ['jeez'],
     },
+    actions: [
+      { id: 'rain', label: '"Tee time got rained out"', hint: 'cancels his deadline · he might check', needs: { issue: 'tee' }, needText: 'only when he has tee time', once: true,
+        line: 'oh nice. ok more games then', self: { endIssue: true },
+        risk: { chance: 0.5, in: [20, 50], line: 'its literally sunny. im out.', goneStatus: 'Asleep (it was sunny)' },
+        result: 'Tee time is cancelled. The forecast says otherwise.' },
+      { id: 'taxes', label: 'Offer to do his taxes', hint: 'he comes online now · annoyed', where: 'offline', needs: { late: 'taxes' }, needText: 'only while he is doing taxes', once: true,
+        line: 'ok fine. dont look at the crypto section', self: { comeOnline: true, annoyed: 1 },
+        result: 'He is coming online. You have seen his finances.' },
+      { id: 'talk', label: 'Talk him through it', hint: 'normal ready speed for a bit', needs: { issue: 'baked' }, needText: 'only when he is baked', cooldown: 60,
+        line: 'ok. ok. press the button. which button', buff: { sober: true, seconds: 20 },
+        result: 'You walked him to the ready button like a lost tourist.' },
+    ],
     issues: [
       { id: 'taxes', label: 'Doing taxes', icon: '📄', type: 'late', minutes: [25, 50], weight: 2,
         lines: { start: ['doing taxes. on in a bit'], end: ['taxes done. im on.'] },
@@ -256,6 +325,16 @@ const FRIENDS = {
       wait: ['im ready im ready'], unready: ['one sec, un-ready'], annoyed: ['bro'],
       startled: ['bro what'], shushed: ['bro'],
     },
+    actions: [
+      { id: 'eta', label: 'Ask for an ETA', hint: 'see how long he will really be', where: 'any', needs: { timed: true }, needText: 'only when he is away', cooldown: 10,
+        line: 'like 5 min', self: { reveal: true }, result: 'He says 5 minutes. It will be {real}.' },
+      { id: 'bet', label: 'Bet him $5 he won\'t be ready in a minute', hint: 'ready now · costly if he flakes', cooldown: 60, needs: { notReady: true, notAway: true }, needText: 'he is ready, or away',
+        line: 'bet. watch this', self: { readyNow: true, hold: 25 },
+        buff: { bet: { vibe: 10, lose: 'ok i lost. i owe you 5. i dont have 5', win: 'pay up', achievement: 'bet' }, seconds: 30 },
+        result: 'He readied out of pure spite.' },
+      { id: 'pic', label: 'Send him a pic of the lobby', hint: 'guilt · shortens his AFK', needs: { issueType: 'afk' }, needText: 'only when he is AFK', oncePerIssue: true,
+        line: 'ok ok im hurrying', self: { shortenPct: 0.4 }, result: 'Four people staring at an empty slot. He felt that.' },
+    ],
     issues: [
       { id: 'diarrhea', label: 'Diarrhea', icon: '🚽', type: 'afk', minutes: [10, 25], weight: 2,
         lines: { start: ['brb. dont ask.', 'bathroom. emergency.'], end: ['ok. im good. dont ask.'] }, buttons: [] },
@@ -297,8 +376,19 @@ const FRIENDS = {
       startled: ['why is everyone yelling'], shushed: ['this. this is why.'],
       caught: ['...ok fine i was in another party', 'it was ONE game with my cousin'],
     },
+    actions: [
+      { id: 'profile', label: 'Check his profile', hint: 'catch him early', where: 'offline', cooldown: 15,
+        self: { checkSneak: true }, result: 'Caught. He was in another party.', miss: 'He really is offline. Weird.' },
+      { id: 'quiet', label: '"Everyone keep it down"', hint: 'shields him · Andre takes it personally', cooldown: 50,
+        line: 'thank you', buff: { yellProof: true, seconds: 30 }, others: { andre: { line: 'NOBODY TELLS ME TO KEEP IT DOWN', outburst: true } },
+        result: 'Nicky C is shielded. Andre is already yelling about it.' },
+      { id: 'promise', label: 'Promise no yelling', hint: 'big patience · he leaves if anyone yells', cooldown: 60,
+        line: 'ok. you promised.', self: { patience: 40 }, buff: { promise: { line: 'you PROMISED. im done.' }, seconds: 30 },
+        result: 'You promised. Look around the lobby. Good luck.' },
+    ],
     issues: [
       { id: 'sneak', label: 'In another party', icon: '🕵️', type: 'sneak', minutes: [20, 45], weight: 1, hint: 'something is off about that "Offline"',
+        suspicionMinutes: 10,                                // his "Offline" only looks suspicious after this long
         lines: { start: [], end: ['hey just got on'] },
         buttons: [{ id: 'catch', label: 'Catch him', kind: 'catch', result: 'Caught. He joined with his camera off.', line: '...ok fine i was in another party' }] },
       { id: 'chores', label: 'Chores', icon: '🧹', type: 'afk', minutes: [12, 24], weight: 2,
@@ -327,6 +417,12 @@ const FRIENDS = {
       startled: ['bro'], shushed: ['bro is he ok'],
       kickedResult: '{name} is gone. Nobody will remember him. The lobby is relieved.',
     },
+    actions: [
+      { id: 'mic', label: '"Do you have a mic?"', hint: 'coin flip', cooldown: 30,
+        coin: { chance: 0.5,
+          win: { line: 'yeah', self: { readyNow: true, hold: 15 }, result: 'He readied up. Who is this guy.' },
+          lose: { line: '*heavy breathing*', all: { patience: -8 }, result: 'He has a mic. He is breathing into it.' } } },
+    ],
     issues: [],
   },
 };
@@ -500,6 +596,9 @@ const TIPS = [
   "Tip: Justin's randoms count as a fifth. They also leave.",
   'Tip: Never tell Shaun to restart the router.',
   'Tip: It is always the dam.',
+  'Tip: Muting Andre is a loan, not a gift.',
+  'Tip: Never promise Nicky C anything while Justin is in the lobby.',
+  'Tip: Parker says 5 minutes. Ask for an ETA anyway.',
 ];
 
 // ---------------------------------------------------------------------------
@@ -541,4 +640,6 @@ const ACHIEVEMENTS = [
   { id: 'dam', title: '"The dam. Got it."', when: 'plan' },
   { id: 'random', title: 'Kicked the random Justin invited', when: 'kickrandom' },
   { id: 'update', title: 'Waited out a 47 GB update with Shaun', when: 'update' },
+  { id: 'muted', title: 'Muted Andre. He noticed.', when: 'muted' },
+  { id: 'bet', title: 'Lost $5 to Parker', when: 'bet' },
 ];
