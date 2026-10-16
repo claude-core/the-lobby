@@ -1,7 +1,7 @@
 'use strict';
 // base.js — shared foundation carried over from Last Cans: seeded RNG, the
-// daily rule (midnight America/New_York), persistent store with one official
-// run per day, share flow, and synthesized audio helpers.
+// daily rule (midnight America/New_York) that picks the same evening for
+// everyone each day, a persistent store, share flow, and synthesized audio.
 
 // ---------------------------------------------------------------------------
 // Seeded RNG
@@ -57,28 +57,18 @@ const Daily = {
 };
 
 // ---------------------------------------------------------------------------
-// Persistent store: one official result per day plus lifetime stats.
+// Persistent store: lifetime stats plus whatever else the game keeps.
+// Every run counts; there is no once-a-day lock.
 // ---------------------------------------------------------------------------
 class DailyStore {
   constructor(key, defaultStats) {
     this.key = key; this.defaultStats = defaultStats;
     try { this.data = JSON.parse(localStorage.getItem(key)) || {}; } catch (_) { this.data = {}; }
-    this.data.results = this.data.results || {};
+    delete this.data.results; delete this.data.inProgress;     // leftovers from the once-a-day version
     this.data.stats = Object.assign({}, defaultStats, this.data.stats || {});
   }
   save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (_) {} }
-  result(day) { return this.data.results[day] || null; }
   get stats() { return this.data.stats; }
-  markInProgress(day) { this.data.inProgress = day; this.save(); }
-  // Records once per day; `applyStats(stats, result, day)` updates lifetime totals.
-  record(day, result, applyStats) {
-    if (this.data.results[day]) return false;
-    this.data.results[day] = Object.assign({ at: Date.now() }, result);
-    if (applyStats) applyStats(this.data.stats, result, day);
-    delete this.data.inProgress;
-    this.save();
-    return true;
-  }
 }
 
 // ---------------------------------------------------------------------------

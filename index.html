@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -22,6 +22,7 @@
     <div id="mode">SQUADS</div>
     <div id="clock">9:00 PM</div>
     <div id="vibe"><div id="vibe-fill"></div><span id="vibe-label">PARTY VIBE</span></div>
+    <button id="btn-pause" type="button" aria-label="Pause">⏸</button>
     <button id="mute" type="button" aria-label="Mute">🔊</button>
   </header>
 
@@ -37,6 +38,7 @@
     <canvas id="chars"></canvas>
     <div id="slots"></div>
     <div id="mode-tag" class="hidden"></div>
+    <div id="guide" class="hidden"></div>
     <div id="banner" class="hidden"></div>
     <div id="readycheck-wrap">
       <button id="ready-check" type="button">READY CHECK<small id="ready-count">0 / 5</small></button>
@@ -64,7 +66,7 @@
       <div class="sub" id="title-day">Evening #1</div>
       <div class="twist" id="title-twist"></div>
       <button class="big" id="btn-start" type="button">Start the evening</button>
-      <button class="big alt hidden" id="btn-title-practice" type="button"></button>
+      <div class="best" id="title-best"></div>
       <div class="fine" id="title-next"></div>
     </div>
     <div class="col howto-col">
@@ -74,6 +76,7 @@
         <li>Everyone in the lobby has a <b class="g">green PATIENCE bar</b>. Keep it <b>UP</b>. When it empties, they leave.</li>
         <li>Justin is the opposite: he has a <b class="r">red ANGER bar</b>. Keep it <b>DOWN</b>. When it fills, he screams and everyone suffers. He never leaves.</li>
         <li>Win: <b>5 READY at the same time</b> for 3 seconds. Lose: the Party Vibe hits zero, or it's 1am.</li>
+        <li><b>💚 Some friends get along. ⚡ Some clash.</b> Tap anyone to see who.</li>
         <li>Shaun shows up once a night. Don't blow it.</li>
       </ul>
       <div class="tip" id="title-tip"></div>
@@ -94,15 +97,14 @@
     <div class="col">
       <div class="sub" id="result-day">Evening #1</div>
       <h1 id="result-title">MATCH FOUND</h1>
-      <div class="tag hidden" id="result-tag">PRACTICE — NOT COUNTED</div>
+      <div class="pill hidden" id="result-tag">DEBUG — NOT COUNTED</div>
       <div id="result-big"></div>
       <div class="btn-row">
         <button class="big" id="btn-share" type="button">Share</button>
         <button class="big alt" id="btn-stats" type="button">Stats</button>
       </div>
       <button class="big" id="btn-again" type="button">Play again</button>
-      <button class="big alt hidden" id="btn-practice" type="button"></button>
-      <button class="big alt hidden" id="btn-today" type="button"></button>
+      <div class="best" id="result-best"></div>
       <div class="fine" id="result-next"></div>
     </div>
     <div class="col">
@@ -119,10 +121,21 @@
   </div>
 </div>
 
+<div id="screen-pause" class="screen hidden">
+  <div class="panel pause">
+    <h1 class="small">PAUSED</h1>
+    <div class="sub">The lobby is waiting. Justin is not.</div>
+    <button class="big" id="btn-resume" type="button">Resume</button>
+    <button class="big alt" id="btn-quit" type="button">Quit evening</button>
+    <div class="fine">Quitting counts as a loss.</div>
+  </div>
+</div>
+
 <div id="toast" class="hidden"></div>
 
-<script src="base.js"></script>
-<script src="friends.js"></script>
-<script src="game.js"></script>
+<!-- Bump ?v= on every release so phones never run stale files. -->
+<script src="base.js?v=6"></script>
+<script src="friends.js?v=6"></script>
+<script src="game.js?v=6"></script>
 </body>
 </html>

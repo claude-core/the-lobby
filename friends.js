@@ -1,7 +1,7 @@
 'use strict';
 // friends.js — ALL friend content lives here: names, looks, lines, timing,
-// issues, fixes and chaos ratings. Edit this file to add jokes; game.js only
-// reads it.
+// issues, fixes, chaos, chemistry, events, tips, achievements, voices, twists,
+// result and action text, and every joke the game tells. game.js only reads it.
 //
 // Units: "minutes" are in-game minutes (the evening runs 9:00pm–1:00am, 240
 // minutes ≈ 3 real minutes, so 20 in-game minutes ≈ 15 real seconds).
@@ -9,16 +9,31 @@
 //
 // Issue types the engine understands:
 //   afk        away in the lobby for `minutes`; not ready; patience paused
+//   download   like afk, but shows a progress bar for a `sizeGB` download
 //   disconnect drops out of the party and offline for `minutes`; must be re-invited
-//   fixable    stuck not-ready until a button fixes it (after `fixSeconds`)
+//   fixable    stuck not-ready until a button fixes it (after `seconds`), or until
+//              `minutes` pass (then says lines.timeout)
 //   deadline   announces a leave time `minutes` ahead; leaves for the evening then
 //   late       (before coming online) pushes their arrival back `minutes`
-//   slowready  readies `readyMul`× slower and sometimes wanders off
-//   soju       randomly readies / un-readies with slurred lines
-//   vote       starts a mode vote; un-readies everyone unless answered in `seconds`
-//   sneak      (before coming online) looks Offline but is in another party; tap to catch
-// Buttons: kind 'shorten' | 'lengthen' | 'resolve' | 'postpone' | 'fix' | 'catch' | 'answer'
-// `worse: { call: minutes }` makes a Call extend the issue. `once: true` buttons work one time.
+//   slowready  readies `readyMul`× slower and sometimes wanders off. A Ping
+//              shortens it by `pingMinutes` and says `pingLine` / `pingResult`.
+//   soju       randomly readies / un-readies
+//   vote       must be answered within `seconds`; `banner` shows the countdown ({s}).
+//              On timeout, lines.timeout plays and then one of:
+//              timeout.unreadyAll (everyone un-readies), timeout.sulk [min] (goes
+//              AFK), timeout.disconnect [min] (restarts the game, must be re-invited)
+//   sneak      (before coming online) looks Offline but is in another party; tap to
+//              catch. `hint` is the button subtitle.
+//   stranger   invites FRIENDS[`stranger`] into a free slot (lines.full if none)
+// `atJoin: true` fires the issue the moment the friend joins the lobby.
+// `achievementOnEnd` unlocks when the issue finishes while the friend is in the lobby.
+// Buttons: kind 'shorten' | 'lengthen' | 'restart' | 'resolve' | 'postpone' | 'fix' |
+//   'catch' | 'answer'. `once: true` works one time. `achievement: id` unlocks it.
+//   `anger: n` adds anger to the friend.
+// `worse: { call: minutes, line, achievement }` makes a Call extend the issue.
+//
+// Lines every friend has: join ready idle leave ping text call wait unready annoyed,
+// plus startled (an outburst made them un-ready) and shushed (a scream did).
 
 const ROSTER = ['shaun', 'matt', 'justin', 'andre', 'nickyb', 'parker', 'nickyc'];
 
@@ -43,6 +58,7 @@ const FRIENDS = {
     sensitive: { outburst: 2, scream: 2 },                 // every lobby issue hits him hardest
     joinDelay: [2, 4],
     codeRed: true,
+    goneStatus: 'Offline · see you next month',
     lines: {
       join: ['hey', 'oh hey guys', 'long time'],
       ready: ['ready', 'ok im in'],
@@ -50,15 +66,27 @@ const FRIENDS = {
       leave: ['ok gotta go, see you guys', 'alright peace'],
       ping: ['yeah im here'], text: ['haha ok'], call: ['why are you calling me'],
       wait: ['are we going?'], unready: ['one sec'], annoyed: ['ok maybe next month'],
-      appear: 'oh hey, it let me log in',
+      startled: ['oh. wow. ok'], shushed: ['is it always like this'],
       gone: 'Shaun has left. See you next month.',
+      appearBanner: 'SHAUN IS ONLINE FOR THE FIRST TIME IN {days} DAYS',
+      appearNotice: 'Shaun is online for the first time in {days} days.',
+      matchBanner: 'PLAYED WITH SHAUN 👑',
     },
     issues: [
       { id: 'settings', label: 'Settings reset', icon: '⚙️', type: 'afk', minutes: [4, 7], weight: 1,
         lines: { start: ['my settings reset lol. one sec'], end: ['ok fixed'] }, buttons: [] },
+      { id: 'update', label: '47 GB update', icon: '⬇️', type: 'download', sizeGB: 47, atJoin: true, minutes: [9, 14], weight: 2,
+        achievementOnEnd: 'update',
+        lines: { start: ['oh it wants a 47 GB update', 'update required. 47 GB. one sec'], end: ['ok updated. wait. my settings reset lol'] },
+        buttons: [
+          { id: 'netflix', label: 'Tell him to pause Netflix', kind: 'shorten', minutes: 5, once: true, result: 'Download speed doubled. His roommate is furious.', line: 'oh that was it lol' },
+          { id: 'router', label: 'Tell him to restart the router', kind: 'restart', once: true, result: 'The download restarted at 0%.', line: 'uh. it says 0% now' },
+        ] },
     ],
   },
 
+  // Matt is the easy one, on purpose. He only ever says four things:
+  // "Tooney", "Tooney time", "Hi Shaun" and "Need more soju".
   matt: {
     name: 'Matt', chaos: 1,
     look: { skin: 'fair', hair: 'medium', hairColor: '#d1542a', shirt: '#3b7dd8', pants: '#34495e', freckles: true },
@@ -67,24 +95,25 @@ const FRIENDS = {
     patience: { max: 100, drain: 0.7 },
     joinDelay: [2, 4],
     lines: {
-      join: ['Tooney', 'tooney time boys'],
+      join: ['Tooney', 'Tooney time'],
       ready: ['Tooney time', 'Tooney'],
-      idle: ['Tooney', 'Hi Shaun', 'tooney?'],
-      leave: ['tooney out'],
-      ping: ['Tooney'], text: ['tooney 👍'], call: ['Tooney time?'],
-      wait: ['tooney?', 'we playing or', 'tooney... time?'],
-      unready: ['grabbing a drink, un-ready', 'brb tooney'],
-      annoyed: ['ok this is taking a while', 'tooney time is passing'],
-      hiShaun: 'Hi Shaun',
-      matchFound: 'TOONEY TIME',
+      idle: ['Tooney', 'Tooney time'],
+      leave: ['Tooney'],
+      ping: ['Tooney'], text: ['Tooney'], call: ['Tooney time'],
+      wait: ['Tooney', 'Tooney time'],
+      unready: ['Need more soju'],
+      annoyed: ['Tooney time'],
+      startled: ['Tooney'], shushed: ['Tooney'],
+      greetCodeRed: 'Hi Shaun',
+      matchFound: 'Tooney time',
     },
     issues: [
       { id: 'tooney', label: 'Tooney run', icon: '🥤', type: 'afk', minutes: [3, 5], weight: 6,
-        lines: { start: ['getting a tooney brb'], end: ['tooney acquired'] }, buttons: [] },
+        lines: { start: ['Tooney'], end: ['Tooney time'] }, buttons: [] },
       { id: 'soju', label: 'Too much Soju', icon: '🍶', type: 'soju', minutes: [40, 70], weight: 1,
-        lines: { start: ['tooooooney', 'boys i had the soju'], during: ['tooooney tiiime', 'im reddy. ready. redy.', 'hi shaun (shaun isnt here)'], end: ['ok. water. im good. tooney.'] },
-        buttons: [{ id: 'water', label: 'Drink some water, Matt', kind: 'resolve', result: 'He drank the water. Tooney restored.', line: 'water. yes. tooney.' }],
-        worse: { call: 15, line: 'WHY IS THE PHONE SO LOUD' } },
+        lines: { start: ['Need more soju'], during: ['Need more soju', 'Tooney', 'Tooney time', 'Hi Shaun'], end: ['Tooney'] },
+        buttons: [{ id: 'water', label: 'Drink some water, Matt', kind: 'resolve', achievement: 'water', result: 'He drank the water. Tooney restored.', line: 'Tooney' }],
+        worse: { call: 15, line: 'Need more soju' } },
     ],
   },
 
@@ -97,6 +126,7 @@ const FRIENDS = {
     anger: { max: 100, rise: 2.4, screamSeconds: 7, calm: 40, afkRise: 1.2 },
     joinDelay: [0, 1],
     neverLeaves: true,
+    issuesPerEvening: [1, 2],
     lines: {
       join: ['FINALLY', 'ok ok ok lets go'],
       ready: ['READY', 'im ready im ready'],
@@ -107,20 +137,29 @@ const FRIENDS = {
       wait: ['WHY ARE WE WAITING', 'READY UP. NOW.', 'WHO IS NOT READY'],
       unready: ['FINE. NOT READY THEN.', 'im unreadying until people ready'],
       annoyed: ['I HAVE BEEN READY FOR AN HOUR', 'SOMEBODY DO SOMETHING'],
+      startled: ['WHY IS HE YELLING', 'WHAT'], shushed: ['...'],
+      afterScream: ['im fine.', 'im calm. IM CALM.'],
       kicked: 'SOMEBODY PLEASE PLAY GAMES WITH ME',
+      kickedResult: 'Kick failed. He was back before the button finished animating.',
       calmed: ['...fine', 'ok. ok. im calm.', 'im not even mad'],
       afkRant: ['{name} HAS BEEN AFK FOR {min} MINUTES', 'IS {name} EVEN HERE', '{name}. {name}. {name}.'],
-      caughtNickyC: 'YOU PLAYED WITHOUT ME??',
-      voteWin: 'ok. SQUADS. fine.',
-      voteLose: 'NOBODY ANSWERED. EVERYONE UNREADY.',
+      caughtSneak: 'YOU PLAYED WITHOUT ME??',
     },
     issues: [
-      { id: 'vote', label: 'Wants a different game', icon: '🗳️', type: 'vote', seconds: 12, weight: 1,
-        lines: { start: ['I want to play a different game. VOTE.', 'can we play literally anything else. VOTE NOW.'] },
+      { id: 'vote', label: 'Wants a different game', icon: '🗳️', type: 'vote', seconds: 12, weight: 2,
+        banner: 'MODE VOTE · answer Justin · {s}s', timeout: { unreadyAll: true }, vibe: 10, timeoutBanner: 'VOTE TIMED OUT · EVERYONE UN-READY',
+        lines: { start: ['I want to play a different game. VOTE.', 'can we play literally anything else. VOTE NOW.'], timeout: ['NOBODY ANSWERED. EVERYONE UNREADY.'] },
         buttons: [
-          { id: 'yes', label: 'Fine, one match of that', kind: 'answer', result: 'He got his one match. Everyone stays ready.', line: 'YES. ONE MATCH. LETS GO.' },
-          { id: 'no', label: 'No. SQUADS.', kind: 'answer', result: 'Vote closed. He is sulking, but ready.', line: 'fine. SQUADS. whatever.' },
+          { id: 'yes', label: 'Fine, one match of that', kind: 'answer', achievement: 'vote', result: 'He got his one match. Everyone stays ready.', line: 'YES. ONE MATCH. LETS GO.' },
+          { id: 'no', label: 'No. SQUADS.', kind: 'answer', achievement: 'vote', anger: 15, result: 'Vote closed. He is sulking, but ready.', line: 'fine. SQUADS. whatever.' },
         ] },
+      { id: 'mic', label: 'Mic broke', icon: '🎙️', type: 'fixable', minutes: [20, 30], weight: 1,
+        lines: { start: ['[TEXT CHAT] MY MIC BROKE', '[TEXT CHAT] CAN ANYONE HEAR ME. TYPING IN CAPS SO YOU CAN HEAR ME.'], fixed: ['CAN YOU HEAR ME NOW. GOOD. READY.'], timeout: ['IT WORKS. NOBODY HELPED. READY.'] },
+        buttons: [{ id: 'replug', label: 'Unplug it and plug it back in', kind: 'fix', seconds: 4, result: 'It worked. Everyone can hear him again. Was that the goal?', line: '[TEXT CHAT] UNPLUGGING' }] },
+      { id: 'random', label: 'Invited a random', icon: '🎲', type: 'stranger', stranger: 'random', weight: 1,
+        notice: '{host} invited a random to fill the slot.',
+        lines: { start: ['I INVITED A RANDOM. HES GOOD.', 'filled the slot. you guys were taking too long'], full: ['lobby is full? FINE. NO RANDOM.'] },
+        buttons: [] },
     ],
   },
 
@@ -132,6 +171,7 @@ const FRIENDS = {
     patience: { max: 100, drain: 1.2 },
     outburst: { every: [13, 24], ignoreSeconds: 6 },
     joinDelay: [2, 5],
+    issuesPerEvening: [1, 2],
     lines: {
       join: ['BOYYYSSSSS', 'boys. BOYS.'],
       ready: ['LETS GO BOYS', 'ready, listen to me when we drop'],
@@ -141,6 +181,7 @@ const FRIENDS = {
       wait: ['boys im ready. BOYS.', 'what are we doing', 'LISTEN TO ME. ready up.'],
       unready: ['im getting a drink, un-ready', 'un-readying until you listen'],
       annoyed: ['this is why we never play', 'im about to hop off boys'],
+      startled: ['BOYS?', 'who is yelling. besides me.'], shushed: ['...BOYS'],
       outburst: ['LISTEN TO ME', 'I LIT HIM FOR 17 AND NOBODY PUSHED', 'BOYS. BOYS. BOYS.'],
       ignored: ["YOU'RE NOT LISTENING", 'NOBODY LISTENS TO ME'],
       listened: ['thank you. finally.', 'ok. ok. we land hot.'],
@@ -152,6 +193,18 @@ const FRIENDS = {
       { id: 'movie', label: 'Movie night', icon: '🎬', type: 'deadline', minutes: [60, 110], weight: 1, goneStatus: 'Watching a movie',
         lines: { start: ['wife wants to watch a movie at {time}. one match boys.'], leave: ['movie time. im out boys.'] },
         buttons: [{ id: 'promise', label: 'Promise just one match', kind: 'postpone', minutes: 15, once: true, result: 'Pushed back 15 minutes. It will not be just one match.', line: 'ok ONE match. ONE.' }] },
+      // Everything new with Andre is about nobody listening to him.
+      { id: 'plan', label: 'Drop plan', icon: '🗺️', type: 'vote', seconds: 10, weight: 2,
+        banner: 'ANDRE HAS A PLAN · tap Andre · {s}s', timeout: { sulk: [6, 10] }, vibe: 8, timeoutBanner: 'NOBODY LISTENED TO THE PLAN',
+        lines: { start: ['LISTEN. WE LAND AT THE DAM. SAY IT BACK.', 'BOYS. THE PLAN. LISTEN TO THE PLAN.'], timeout: ['FINE. LAND WHEREVER. IM GETTING A SNACK.'], end: ['im back. it was the dam. it was always the dam.'] },
+        buttons: [{ id: 'repeat', label: '"The dam. Got it."', kind: 'answer', achievement: 'dam', result: 'He repeated the plan twice more anyway. But he is ready.', line: 'THANK YOU. THE DAM.' }] },
+      { id: 'story', label: 'The 17 story', icon: '💀', type: 'fixable', minutes: [14, 22], weight: 2,
+        lines: { start: ['nobody asked how many I lit him for. not readying until someone asks.'], fixed: ['SEVENTEEN. thank you. ready.'], timeout: ['fine. it was 17. nobody cares. ready.'] },
+        buttons: [{ id: 'ask', label: 'Ask how many he lit him for', kind: 'fix', seconds: 3, result: 'It was 17. It is always 17.', line: 'SEVENTEEN.' }] },
+      { id: 'mutecheck', label: 'Thinks he is muted', icon: '🔇', type: 'vote', seconds: 8, weight: 1,
+        banner: 'ANDRE THINKS HE IS MUTED · tap Andre · {s}s', timeout: { disconnect: [5, 9] }, vibe: 6, timeoutBanner: 'ANDRE RESTARTED HIS GAME',
+        lines: { start: ['CAN YOU HEAR ME? HELLO? BOYS?', 'is my mic on? NOBODY IS ANSWERING. IS MY MIC ON?'], timeout: ['NOBODY ANSWERED. RESTARTING MY GAME.'] },
+        buttons: [{ id: 'hear', label: '"We can hear you, Andre"', kind: 'answer', result: 'He can be heard. He has always been heard.', line: 'oh. good. LISTEN TO ME THEN.' }] },
     ],
   },
 
@@ -169,12 +222,14 @@ const FRIENDS = {
       leave: ['tee time tomorrow. night.'],
       ping: ['yeah'], text: ['lol chill'], call: ['hello?'],
       wait: ['we playing?'], unready: ['hold on, un-ready'], annoyed: ['im about to go to bed'],
+      startled: ['huh'], shushed: ['jeez'],
     },
     issues: [
       { id: 'taxes', label: 'Doing taxes', icon: '📄', type: 'late', minutes: [25, 50], weight: 2,
         lines: { start: ['doing taxes. on in a bit'], end: ['taxes done. im on.'] },
         buttons: [{ id: 'hype', label: 'Hype him up', kind: 'shorten', minutes: 12, once: true, result: 'He typed faster. Slightly.', line: 'ok ok im going as fast as i can' }] },
       { id: 'baked', label: 'Baked off weed gummies', icon: '🌀', type: 'slowready', minutes: [50, 90], readyMul: 3, weight: 2,
+        pingMinutes: 4, pingLine: 'huh? oh. yeah.', pingResult: 'The ping got through the haze a little.',
         lines: { start: ['those gummies were strong lol'], during: ['wait what are we playing', 'are we in a party rn', 'did someone say ready'], wander: ['wait i forgot i was in here'], end: ['ok im back. kind of.'] },
         buttons: [{ id: 'ping', label: 'Ping him again', kind: 'shorten', minutes: 8, result: 'Ping landed somewhere in there.', line: 'huh? oh. yeah.' }],
         worse: { call: 20, line: 'why is my phone... oh.' } },
@@ -199,6 +254,7 @@ const FRIENDS = {
       leave: ['gotta go', 'brb'],
       ping: ['ya ya'], text: ['bro im literally ready'], call: ['dude im in the bathroom'],
       wait: ['im ready im ready'], unready: ['one sec, un-ready'], annoyed: ['bro'],
+      startled: ['bro what'], shushed: ['bro'],
     },
     issues: [
       { id: 'diarrhea', label: 'Diarrhea', icon: '🚽', type: 'afk', minutes: [10, 25], weight: 2,
@@ -210,13 +266,13 @@ const FRIENDS = {
           { id: 'one', label: 'Grab me one too', kind: 'lengthen', minutes: 10, once: true, result: 'Now he is at a second store.', line: 'ok they didnt have it, going somewhere else' },
         ] },
       { id: 'controller', label: 'Controller died', icon: '🔋', type: 'fixable', minutes: [60, 60], weight: 2,
-        lines: { start: ['bro my controller died'], fixed: ['ok its charging. ready.'] },
+        lines: { start: ['bro my controller died'], fixed: ['ok its charging. ready.'], timeout: ['found a cable. ready.'] },
         buttons: [{ id: 'plug', label: 'Plug it in', kind: 'fix', seconds: 5, result: 'He found the cable under the couch.', line: 'ok plugging it in one sec' }] },
       { id: 'wifi', label: 'Wi-Fi went out', icon: '📶', type: 'disconnect', minutes: [6, 12], weight: 2,
         lines: { start: ['wifis out brb'], end: ['wifis back'] }, buttons: [] },
       { id: 'bnc', label: 'BNC issues', icon: '⛓️', type: 'afk', minutes: [10, 35], weight: 2,
         lines: { start: ['bnc. brb.', 'ball and chain. hold on.'], end: ['ok im back'] },
-        buttons: [], worse: { call: 30, line: 'bro you called during the bnc talk. im in trouble.' } },
+        buttons: [], worse: { call: 30, achievement: 'bnccall', line: 'bro you called during the bnc talk. im in trouble.' } },
       { id: 'power', label: 'Power went out', icon: '🔌', type: 'disconnect', minutes: [25, 40], weight: 1,
         lines: { start: ['power went out'], end: ['powers back'] }, buttons: [] },
     ],
@@ -238,10 +294,11 @@ const FRIENDS = {
       leave: ['im done', 'this is why i play with other people'],
       ping: ['what'], text: ['im chill'], call: ['stop calling me'],
       wait: ['can we just go'], unready: ['im not ready until people stop yelling'], annoyed: ['im about to leave'],
+      startled: ['why is everyone yelling'], shushed: ['this. this is why.'],
       caught: ['...ok fine i was in another party', 'it was ONE game with my cousin'],
     },
     issues: [
-      { id: 'sneak', label: 'In another party', icon: '🕵️', type: 'sneak', minutes: [20, 45], weight: 1,
+      { id: 'sneak', label: 'In another party', icon: '🕵️', type: 'sneak', minutes: [20, 45], weight: 1, hint: 'something is off about that "Offline"',
         lines: { start: [], end: ['hey just got on'] },
         buttons: [{ id: 'catch', label: 'Catch him', kind: 'catch', result: 'Caught. He joined with his camera off.', line: '...ok fine i was in another party' }] },
       { id: 'chores', label: 'Chores', icon: '🧹', type: 'afk', minutes: [12, 24], weight: 2,
@@ -250,21 +307,92 @@ const FRIENDS = {
         buttons: [{ id: 'guilt', label: 'Guilt trip', kind: 'shorten', minutes: 6, once: true, result: 'He felt bad enough to hurry.', line: 'ok ok im almost done' }] },
     ],
   },
+
+  // Not a friend. Justin invites him. Never in the friends list.
+  random: {
+    name: 'xX_Gamer_Xx', chaos: 4, stranger: true,
+    look: { skin: 'brown', hair: 'short', hairColor: '#222', shirt: '#5c6370', pants: '#222', cap: '#c0392b' },
+    online: { window: [9999, 9999] },
+    readyTime: [5, 12], readyHold: [10, 16],
+    patience: { max: 100, drain: 1.5 },
+    joinDelay: [0, 0],
+    achievementOnKick: 'random',
+    lines: {
+      join: ['*heavy breathing*', 'yo whats up'],
+      ready: ['rdy', 'ready'],
+      idle: [],
+      leave: ['*left the party*'],
+      ping: ['?'], text: ['who is this'], call: ['how did you get my number'],
+      wait: ['we going or what'], unready: ['brb'], annoyed: ['you guys are weird'],
+      startled: ['bro'], shushed: ['bro is he ok'],
+      kickedResult: '{name} is gone. Nobody will remember him. The lobby is relieved.',
+    },
+    issues: [],
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Chemistry: who gets along and who clashes, while both are in the lobby.
+// kind 'like' shows 💚 and 'clash' shows ⚡ next to both names.
+// Effects on each friend in `targets`: drainMul (patience drain), angerMul
+// (anger rise). `vibe` is extra Party Vibe per second. `line` is
+// [who, text], said once per evening when the pair first meets.
+// ---------------------------------------------------------------------------
+const CHEMISTRY = [
+  { pair: ['matt', 'shaun'], kind: 'like', targets: ['shaun'], drainMul: 0.55, vibe: 0.15, line: ['matt', 'Hi Shaun'], notice: 'Matt is here. Shaun relaxes.' },
+  { pair: ['matt', 'justin'], kind: 'like', targets: ['justin'], angerMul: 0.7, line: ['justin', 'ok. MATT is here. good.'], notice: 'Matt is here. Justin is slightly quieter.' },
+  { pair: ['nickyb', 'parker'], kind: 'like', targets: ['nickyb', 'parker'], drainMul: 0.7, line: ['parker', 'NICKY B. seltzer?'], notice: 'Nicky B and Parker are sharing seltzers and gummies.' },
+  { pair: ['andre', 'nickyc'], kind: 'clash', targets: ['nickyc'], drainMul: 1.6, line: ['nickyc', 'oh great. andre.'], notice: 'Andre and Nicky C are in the same lobby. Nicky C is tense.' },
+  { pair: ['justin', 'nickyc'], kind: 'clash', targets: ['justin'], angerMul: 1.3, line: ['justin', 'oh NOW you play with us?'], notice: 'Justin knows Nicky C plays without him.' },
+  { pair: ['shaun', 'parker'], kind: 'clash', targets: ['shaun'], drainMul: 1.35, line: ['shaun', 'is parker afk again'], notice: 'Parker is here. Shaun has seen this before.' },
+];
 
 // Lines the whole lobby cycles through once a match is found.
 const MATCH_LINES = [
-  ['andre', 'WE LAND HOT'], ['justin', 'LAND WITH ME'], ['matt', 'tooney'], ['andre', 'I LIT HIM FOR 17'],
-  ['justin', 'WHY DID YOU LAND THERE'], ['parker', 'my controller died'], ['andre', 'LISTEN TO ME'], ['matt', 'tooney time'],
+  ['andre', 'WE LAND HOT'], ['justin', 'LAND WITH ME'], ['matt', 'Tooney'], ['andre', 'I LIT HIM FOR 17'],
+  ['justin', 'WHY DID YOU LAND THERE'], ['parker', 'my controller died'], ['andre', 'LISTEN TO ME'], ['matt', 'Tooney time'],
   ['nickyc', 'why is everyone yelling'], ['andre', "YOU'RE NOT LISTENING"], ['justin', 'I HAVE NO SHIELD'], ['nickyb', 'wait what are we playing'],
   ['shaun', 'is this the new map'], ['matt', 'Hi Shaun'], ['andre', 'PUSH PUSH PUSH'], ['justin', 'IM DOWN. IM DOWN.'],
-  ['andre', 'gg boys'], ['matt', 'gg'],
+  ['random', '*heavy breathing*'], ['andre', 'gg boys'], ['matt', 'Tooney'],
 ];
 
 const RESULT_LINES = {
   win: ['MATCH FOUND. It only took the whole evening.', 'The lobby held. Somehow.'],
   vibe: 'Everyone hopped off. gn boys.',
   time: '1am. Everyone has work tomorrow.',
+  quit: 'You bailed. The lobby will talk about this.',
+  titles: { win: 'MATCH FOUND', vibe: 'GN BOYS', time: "IT'S 1AM", quit: 'BAILED' },
+  banners: { vibe: 'Everyone hopped off.', time: "It's 1am.", quit: 'You left the party.' },
+};
+
+// Row labels on the result screen and the stats screen.
+const RESULT_LABELS = {
+  trouble: '🧨 Most trouble', shaun: '👑 Shaun', shaunMatch: 'PLAYED WITH SHAUN', shaunStayed: 'stayed {dur}, then left',
+  shaunPopped: 'popped in and left', shaunNever: 'never showed',
+  parker: '🚽 Parker AFK', andre: '📢 Andre: "LISTEN TO ME"', justin: '😤 Justin screamed', unreadies: '🔴 People un-readied',
+  leaves: '🚪 Left the party', kicks: '🦶 Kicks', caught: '🕵️ Caught Nicky C', crashed: '💥 Crashed on ready',
+  talk: '🎙️ Most talkative', golden: '✨ Golden Evening', twist: '🎲 Twist',
+};
+const STATS_LABELS = {
+  evenings: 'Evenings played', matches: 'Matches started', rate: 'Win rate', longest: 'Longest lobby',
+  shaunMatches: 'Matches with Shaun', shaunLongest: 'Longest time keeping Shaun', parkerAfk: 'Parker AFK, all-time',
+  andreOutbursts: 'Andre outbursts, all-time', streak: 'Current win streak', bestStreak: 'Best win streak',
+};
+
+// Text for the action menu. {name} is the friend, {min} the kick length.
+const ACTION_TEXT = {
+  invite: { label: 'Invite', hint: 'to the party', result: '{name} invited. Now we wait.' },
+  ping: { label: 'Ping', hint: 'free, weak', result: 'Pinged {name}. A grunt was heard.', away: '{name} is away. The ping echoed.' },
+  text: { label: 'Text "chillllll"', hint: 'medium · 20s cooldown', result: '{name} read it. Left on read, but read.' },
+  call: { label: 'Call', hint: 'strong · annoys everyone else', result: 'Called {name}. Everyone else heard it ring.', away: '{name} picked up, annoyed, and is still away.', worse: 'That made it worse. Everyone else heard it ring too.' },
+  calm: { label: 'Calm down, {name}', hint: 'lowers anger', result: '{name} took a breath. One breath.' },
+  listen: { label: "I'm listening, {name}", hint: 'ends the outburst', result: '{name} feels heard. For now.' },
+  kick: {
+    label: 'Kick', hint: 'out for {min} min', notice: '{name} was kicked from the party.',
+    result: '{name} is out for {min} minutes. He did nothing wrong. Everyone noticed.',
+    relief: '{name} is out for {min} minutes. The lobby exhales.',
+    failBanner: '{name} instantly rejoined',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -290,11 +418,14 @@ const TWISTS = [
   { id: 'chill', text: 'Chill night. Allegedly.', effects: { patienceMul: 0.85 } },
   { id: 'dogs', text: "Andre's dogs have been weird all day.", effects: { weight: { friend: 'andre', issue: 'dogs', mul: 5 } } },
   { id: 'power', text: "There's a storm by Parker's place.", effects: { weight: { friend: 'parker', issue: 'power', mul: 6 } } },
+  { id: 'plan', text: 'Andre watched a strategy video.', effects: { weight: { friend: 'andre', issue: 'plan', mul: 5 } } },
+  { id: 'random', text: 'Justin has been talking to randoms.', effects: { weight: { friend: 'justin', issue: 'random', mul: 6 } } },
 ];
 
 const GOLDEN = {
   chance: 0.05,                           // about 1 in 20 evenings
   text: '✨ GOLDEN EVENING ✨ Everyone is on. Everyone is happy. Even Shaun.',
+  notice: 'Golden Evening: everyone is on and in a good mood.',
   patienceMul: 0.55, angerMul: 0.6, outburstMul: 1.7,
   shaunSeconds: [120, 150],
 };
@@ -302,24 +433,26 @@ const GOLDEN = {
 const EVENTS = {
   maintenance: { chance: 0.25, window: [50, 190], minutes: 10, banner: 'SERVER MAINTENANCE', notice: 'Servers down for maintenance. Everyone dropped to the friends list.', back: 'Servers are back. Re-invite everyone.' },
   crash: { chance: 0.08, minutes: 5, banner: 'GAME CRASHED ON READY', notice: 'The game crashed the moment everyone readied up. Classic.' },
+  chatbug: { chance: 0.2, window: [40, 180], minutes: 14, banner: 'PARTY CHAT BUGGED', notice: 'Party chat is bugged. Nobody can hear anybody. Ready Check is down.', back: 'Party chat is back. Everyone talks at once.', muffled: '🔇 . . .', readyCheck: 'CHAT BUGGED' },
+  doublexp: { chance: 0.2, window: [30, 170], minutes: 30, patienceMul: 0.6, banner: 'DOUBLE XP · 30 MINUTES', notice: 'Double XP for 30 minutes. Everyone is suddenly patient.', back: 'Double XP is over. So is the patience.' },
 };
 
-// Lines for the share card.
+// Lines for the share card. `trail` is the emoji each friend collects
+// through the night (issues add their own icon).
 const SHARE = {
   title: '🛋️ THE LOBBY #{day}',
   win: '⏳ Lobby {lobby} · 🎮 Match {match}',
   loseVibe: '💀 Everyone hopped off. gn boys.',
   loseTime: '🕐 1am. Everyone has work tomorrow.',
+  loseQuit: '🏃 Bailed on the lobby.',
   lobbyOnly: '⏳ Lobby {lobby}',
   shaunMatch: '👑 PLAYED WITH SHAUN',
   shaunLeft: '👋 Shaun popped in for {min} and left',
   shaunNever: '👻 Shaun never showed',
-  parker: '🚽 Parker AFK {n} times',
-  andre: '📢 Andre: "LISTEN TO ME" ×{n}',
-  justin: '😤 Justin screamed ×{n}',
   caught: '🕵️ Caught Nicky C',
   tooney: '✅ TOONEY TIME',
   golden: '✨ Golden Evening',
+  trail: { match: '✅', leave: '🚪', kicked: '🦶', gone: '🌙', shaunLeft: '👋', outburst: '📢', scream: '😤', caught: '🕵️', never: '💤', quiet: '🙂' },
 };
 
 // ---------------------------------------------------------------------------
@@ -333,6 +466,7 @@ const VOICES = {
   nickyb: { pitch: 380, type: 'triangle' },
   parker: { pitch: 460, type: 'square' },
   nickyc: { pitch: 560, type: 'sine' },
+  random: { pitch: 240, type: 'sawtooth' },
 };
 
 // ---------------------------------------------------------------------------
@@ -360,6 +494,25 @@ const TIPS = [
   "Tip: BNC issues cannot be fixed. BNC issues can be made worse. Don't call.",
   'Tip: Nobody has ever played just one match.',
   'Tip: The match is 6 minutes. The lobby is your life now.',
+  'Tip: Matt calms everyone down. Nobody knows how. Tooney.',
+  'Tip: Andre and Nicky C should not be in the same lobby.',
+  'Tip: Kicking someone who is AFK cheers everyone else up.',
+  "Tip: Justin's randoms count as a fifth. They also leave.",
+  'Tip: Never tell Shaun to restart the router.',
+  'Tip: It is always the dam.',
+];
+
+// ---------------------------------------------------------------------------
+// First-evening guide: one hint at a time, each shown once, only on a
+// player's very first evening. `when` is a condition the engine checks.
+// ---------------------------------------------------------------------------
+const GUIDE = [
+  { id: 'listen', when: 'listen', text: '👉 Andre is yelling. Tap him and say "I\'m listening" before he blows up.' },
+  { id: 'anger', when: 'anger', text: "👉 Justin's red ANGER bar is filling. Tap him and calm him down." },
+  { id: 'fix', when: 'fix', text: '👉 Someone has a problem. Tap them for the yellow fix buttons.' },
+  { id: 'patience', when: 'patience', text: '👉 A green PATIENCE bar is low. Tap that friend and text them.' },
+  { id: 'invite', when: 'invite', text: '👈 Tap INVITE next to anyone who is Online.' },
+  { id: 'ready', when: 'ready', text: '👉 Get all 5 READY at once for 3 seconds. The yellow ring shows who is holding things up.' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -385,4 +538,7 @@ const ACHIEVEMENTS = [
   { id: 'water', title: 'Got Matt to drink water', when: 'water' },
   { id: 'restart3', title: 'Restarted the party three times', when: 'restart3' },
   { id: 'noactions', title: 'Won without pinging, texting or calling anyone', when: 'noactions' },
+  { id: 'dam', title: '"The dam. Got it."', when: 'plan' },
+  { id: 'random', title: 'Kicked the random Justin invited', when: 'kickrandom' },
+  { id: 'update', title: 'Waited out a 47 GB update with Shaun', when: 'update' },
 ];
