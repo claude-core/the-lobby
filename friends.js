@@ -26,6 +26,8 @@
 //              catch. `hint` is the button subtitle.
 //   stranger   invites FRIENDS[`stranger`] into a free slot (lines.full if none)
 // `atJoin: true` fires the issue the moment the friend joins the lobby.
+// `prop` draws something on the friend while the issue lasts: 'spiralEyes' | 'bottle'.
+// (Every AFK friend turns into a faded ghost with the issue's icon over his head.)
 // `achievementOnEnd` unlocks when the issue finishes while the friend is in the lobby.
 // Buttons: kind 'shorten' | 'lengthen' | 'restart' | 'resolve' | 'postpone' | 'fix' |
 //   'catch' | 'answer'. `once: true` works one time. `achievement: id` unlocks it.
@@ -146,7 +148,7 @@ const FRIENDS = {
     issues: [
       { id: 'tooney', label: 'Tooney run', icon: '🥤', type: 'afk', minutes: [3, 5], weight: 6,
         lines: { start: ['Tooney'], end: ['Tooney time'] }, buttons: [] },
-      { id: 'soju', label: 'Too much Soju', icon: '🍶', type: 'soju', minutes: [40, 70], weight: 1,
+      { id: 'soju', label: 'Too much Soju', icon: '🍶', type: 'soju', minutes: [40, 70], weight: 1, prop: 'bottle',
         lines: { start: ['Need more soju'], during: ['Need more soju', 'Tooney', 'Tooney time', 'Hi Shaun'], end: ['Tooney'] },
         buttons: [{ id: 'water', label: 'Drink some water, Matt', kind: 'resolve', achievement: 'water', result: 'He drank the water. Tooney restored.', line: 'Tooney' }],
         worse: { call: 15, line: 'Need more soju' } },
@@ -297,7 +299,7 @@ const FRIENDS = {
       { id: 'taxes', label: 'Doing taxes', icon: '📄', type: 'late', minutes: [25, 50], weight: 2,
         lines: { start: ['doing taxes. on in a bit'], end: ['taxes done. im on.'] },
         buttons: [{ id: 'hype', label: 'Hype him up', kind: 'shorten', minutes: 12, once: true, result: 'He typed faster. Slightly.', line: 'ok ok im going as fast as i can' }] },
-      { id: 'baked', label: 'Baked off weed gummies', icon: '🌀', type: 'slowready', minutes: [50, 90], readyMul: 3, weight: 2,
+      { id: 'baked', label: 'Baked off weed gummies', icon: '🌀', type: 'slowready', minutes: [50, 90], readyMul: 3, weight: 2, prop: 'spiralEyes',
         pingMinutes: 4, pingLine: 'huh? oh. yeah.', pingResult: 'The ping got through the haze a little.',
         lines: { start: ['those gummies were strong lol'], during: ['wait what are we playing', 'are we in a party rn', 'did someone say ready'], wander: ['wait i forgot i was in here'], end: ['ok im back. kind of.'] },
         buttons: [{ id: 'ping', label: 'Ping him again', kind: 'shorten', minutes: 8, result: 'Ping landed somewhere in there.', line: 'huh? oh. yeah.' }],
@@ -442,6 +444,14 @@ const CHEMISTRY = [
   { pair: ['justin', 'nickyc'], kind: 'clash', targets: ['justin'], angerMul: 1.3, line: ['justin', 'oh NOW you play with us?'], notice: 'Justin knows Nicky C plays without him.' },
   { pair: ['shaun', 'parker'], kind: 'clash', targets: ['shaun'], drainMul: 1.35, line: ['shaun', 'is parker afk again'], notice: 'Parker is here. Shaun has seen this before.' },
 ];
+
+// What the lobby itself shows: the mode card, the map on the big screen and
+// the match-found splash.
+const LOBBY_ART = {
+  mode: 'SQUADS', modeSub: 'NEED 5 READY',
+  mapLabel: 'NEXT MAP', mapName: 'THE DAM',
+  splash: 'MATCH FOUND', drop: 'DROPPING INTO THE DAM',
+};
 
 // Lines the whole lobby cycles through once a match is found.
 const MATCH_LINES = [

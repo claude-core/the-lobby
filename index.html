@@ -7,20 +7,24 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="The Lobby">
-<meta name="theme-color" content="#141a2e">
+<meta name="theme-color" content="#0b0e22">
 <meta name="format-detection" content="telephone=no">
 <title>The Lobby</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&display=swap">
+<!-- Bump ?v= on every release so phones never run stale files. -->
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
 <div id="app" class="hidden">
   <header id="top">
-    <div id="mode">SQUADS</div>
     <div id="clock">9:00 PM</div>
+    <div id="vibe-face" aria-hidden="true">😁</div>
     <div id="vibe"><div id="vibe-fill"></div><span id="vibe-label">PARTY VIBE</span></div>
     <button id="btn-pause" type="button" aria-label="Pause">⏸</button>
     <button id="mute" type="button" aria-label="Mute">🔊</button>
@@ -29,28 +33,35 @@
   <aside id="friends">
     <h2>FRIENDS <span id="friend-count"></span></h2>
     <ul id="friend-list"></ul>
-    <div id="feed"></div>
-    <button id="btn-restart" type="button" class="side-btn">↻ Restart Party</button>
+    <div class="side-actions">
+      <button id="ready-check" type="button">READY CHECK<small id="ready-count">0 / 5</small></button>
+      <button id="btn-restart" type="button" class="side-btn">↻ Restart Party</button>
+    </div>
   </aside>
 
   <main id="stage">
-    <div id="sky"><div class="sun"></div><div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div></div>
+    <canvas id="bg"></canvas>
+    <div id="map-screen"><div class="map-head" id="map-head"></div><div class="map-img" id="map-img"></div><div class="map-name" id="map-name"></div></div>
+    <div id="mode-card"><b id="mode-name"></b><small id="mode-sub"></small></div>
     <canvas id="chars"></canvas>
     <div id="slots"></div>
-    <div id="mode-tag" class="hidden"></div>
+    <div id="notes"></div>
     <div id="guide" class="hidden"></div>
+    <div id="countdown" class="hidden"></div>
     <div id="banner" class="hidden"></div>
-    <div id="readycheck-wrap">
-      <button id="ready-check" type="button">READY CHECK<small id="ready-count">0 / 5</small></button>
-    </div>
+    <div id="mode-tag" class="hidden"></div>
   </main>
 
+  <div id="splash" class="hidden">
+    <div class="sp-title" id="sp-title"></div>
+    <div class="sp-map" id="sp-map"><div class="sp-plane">✈️</div></div>
+    <div class="sp-drop" id="sp-drop"></div>
+  </div>
 </div>
 
 <div id="menu" class="hidden">
   <div id="menu-sheet">
-    <div id="menu-title">Matt</div>
-    <div id="menu-sub"></div>
+    <div class="menu-head"><img id="menu-portrait" alt=""><div><div id="menu-title">Matt</div><div id="menu-sub"></div></div></div>
     <div id="menu-actions"></div>
     <div id="menu-result"></div>
     <button id="menu-close" type="button">Close</button>
@@ -60,9 +71,10 @@
 <div id="rotate"><div><div class="phone">📱</div>Rotate your phone<br><small>The Lobby is a landscape game.</small></div></div>
 
 <div id="screen-title" class="screen">
-  <div class="panel wide">
-    <div class="col">
+  <div class="panel title-panel">
+    <div class="col title-left">
       <h1>THE LOBBY</h1>
+      <canvas id="title-crew"></canvas>
       <div class="sub" id="title-day">Evening #1</div>
       <div class="twist" id="title-twist"></div>
       <button class="big" id="btn-start" type="button">Start the evening</button>
@@ -71,14 +83,19 @@
     </div>
     <div class="col howto-col">
       <div class="howto-title">HOW THIS WORKS</div>
-      <ul class="howto">
-        <li>Seven friends, <b>five slots</b>. Invite people from the list, then tap anyone for <b>their own moves</b>, plus ping, text, call, fixes, or kick.</li>
-        <li>Everyone in the lobby has a <b class="g">green PATIENCE bar</b>. Keep it <b>UP</b>. When it empties, they leave.</li>
-        <li>Justin is the opposite: he has a <b class="r">red ANGER bar</b>. Keep it <b>DOWN</b>. When it fills, he screams and everyone suffers. He never leaves.</li>
-        <li>Win: <b>5 READY at the same time</b> for 3 seconds. Lose: the Party Vibe hits zero, or it's 1am.</li>
-        <li><b>💚 Some friends get along. ⚡ Some clash.</b> Tap anyone to see who.</li>
-        <li>Shaun shows up once a night. Don't blow it.</li>
-      </ul>
+      <div class="hpanel">
+        <div class="ill ill-invite"><span class="mini-row"><i></i>Online<em>INVITE</em></span><span class="mini-slot">+</span></div>
+        <p><b>Invite</b> friends into <b>five slots</b>. Tap anyone for their own moves, plus ping, text, call, or kick.</p>
+      </div>
+      <div class="hpanel">
+        <div class="ill ill-bars"><span class="br"><span class="mbar g"><i style="width:80%"></i></span><b class="g">▲ UP</b></span><span class="br"><span class="mbar r"><i style="width:30%"></i></span><b class="r">▼ DOWN</b></span></div>
+        <p>Keep everyone's <b class="g">green PATIENCE bar UP</b> or they leave. Keep Justin's <b class="r">red ANGER bar DOWN</b> or he screams. He never leaves.</p>
+      </div>
+      <div class="hpanel">
+        <div class="ill ill-win"><span class="dots"><i></i><i></i><i></i><i></i><i></i></span><b>3</b></div>
+        <p><b>Win:</b> 5 READY at once for 3 seconds. <b>Lose:</b> the Party Vibe hits zero, or it's 1am.</p>
+      </div>
+      <div class="extra">💚 Some friends get along. ⚡ Some clash. Shaun shows up once a night. Don't blow it.</div>
       <div class="tip" id="title-tip"></div>
     </div>
   </div>
@@ -107,7 +124,8 @@
       <div class="best" id="result-best"></div>
       <div class="fine" id="result-next"></div>
     </div>
-    <div class="col">
+    <div class="col result-right">
+      <canvas id="result-crew"></canvas>
       <div id="result-body"></div>
     </div>
   </div>
@@ -133,9 +151,9 @@
 
 <div id="toast" class="hidden"></div>
 
-<!-- Bump ?v= on every release so phones never run stale files. -->
-<script src="base.js?v=8"></script>
-<script src="friends.js?v=8"></script>
-<script src="game.js?v=8"></script>
+<script src="base.js?v=11"></script>
+<script src="friends.js?v=11"></script>
+<script src="art.js?v=11"></script>
+<script src="game.js?v=11"></script>
 </body>
 </html>

@@ -17,7 +17,10 @@ const KEEP_ON_KICK = ['afk', 'download', 'fixable', 'slowready', 'soju', 'deadli
 const $ = id => document.getElementById(id);
 const ui = {
   app: $('app'), clock: $('clock'), vibeFill: $('vibe-fill'), vibeLabel: $('vibe-label'), mute: $('mute'),
-  list: $('friend-list'), friendCount: $('friend-count'), restart: $('btn-restart'), feed: $('feed'), modeTag: $('mode-tag'),
+  list: $('friend-list'), friendCount: $('friend-count'), restart: $('btn-restart'), notes: $('notes'), modeTag: $('mode-tag'),
+  bg: $('bg'), mapImg: $('map-img'), mapHead: $('map-head'), mapName: $('map-name'), modeName: $('mode-name'), modeSub: $('mode-sub'),
+  countdown: $('countdown'), splash: $('splash'), vibeFace: $('vibe-face'), titleCrew: $('title-crew'), resultCrew: $('result-crew'),
+  menuSheet: $('menu-sheet'), menuPortrait: $('menu-portrait'),
   stage: $('stage'), canvas: $('chars'), slots: $('slots'), banner: $('banner'), readyCheck: $('ready-check'), readyCount: $('ready-count'),
   menu: $('menu'), menuTitle: $('menu-title'), menuSub: $('menu-sub'), menuActions: $('menu-actions'), menuResult: $('menu-result'), menuClose: $('menu-close'),
   title: $('screen-title'), titleDay: $('title-day'), titleTwist: $('title-twist'), titleNext: $('title-next'), start: $('btn-start'), titleBest: $('title-best'),
@@ -27,7 +30,7 @@ const ui = {
   pauseBtn: $('btn-pause'), pauseScreen: $('screen-pause'), resume: $('btn-resume'), quit: $('btn-quit'),
   loading: $('screen-loading'), loadFill: $('load-fill'), loadTip: $('load-tip'), titleTip: $('title-tip'), vibe: $('vibe'),
 };
-const ctx = ui.canvas.getContext('2d');
+const ctx = ui.canvas.getContext('2d'), bgx = ui.bg.getContext('2d');
 Sfx.setup('thelobby_muted', ui.mute);
 
 const Store = new DailyStore('thelobby_v1', { evenings: 0, matches: 0, longestLobby: 0, shaunMatches: 0, shaunLongest: 0, parkerAfk: 0, andreOutbursts: 0, streak: 0, bestStreak: 0, lastDay: 0 });
@@ -92,7 +95,7 @@ function startEvening(mode) {
   G.rng = new Rng(Daily.seedFor(G.day, 0));
   G.evening = planEvening(G.day); G.serverDown = 0;
   G.t = 0; G.clock = 0; G.vibe = 100; G.winT = 0; G.shake = 0; G.matchT = 0; G.matchLine = 0; G.result = null; G.rcCooldown = 0;
-  G.subs = []; G.notices = []; ui.feed.innerHTML = ''; G.log = { leaves: 0, screams: 0, kicks: 0, calls: 0, outbursts: 0, unreadies: 0, lines: {}, issues: {}, afk: {}, trail: {}, caught: false, withShaun: false, crashed: false };
+  G.subs = []; ui.notes.innerHTML = ''; G.slotFx = []; G.cdShown = 0; ui.splash.classList.add('hidden'); G.log = { leaves: 0, screams: 0, kicks: 0, calls: 0, outbursts: 0, unreadies: 0, lines: {}, issues: {}, afk: {}, trail: {}, caught: false, withShaun: false, crashed: false };
   G.chem = {}; G.chemActive = []; G.chatBug = 0; G.doubleXp = 0; G.rcHighlight = 0;
   G.friends = {}; for (const id of ROSTER) G.friends[id] = makeFriend(id);
   for (const id of ROSTER) scheduleIssues(G.friends[id]);
@@ -104,7 +107,6 @@ function startEvening(mode) {
   for (const id of ROSTER) if (FRIENDS[id].neverLeaves) { const f = G.friends[id]; setOnline(f, true); joinLobby(f, true); }
   G.state = 'playing';
   ui.title.classList.add('hidden'); ui.result.classList.add('hidden'); ui.statsScreen.classList.add('hidden'); ui.app.classList.remove('hidden');
-  ui.stage.classList.remove('night', 'match');
   notice('Party created · need ' + needed() + ' ready');
   if (G.evening.golden) { banner('✨ GOLDEN EVENING ✨', 'good', 3.5); spawnConfetti(80, ['#ffd23f', '#ffe066', '#fff3b0', '#ffb800']); notice(GOLDEN.notice); }
   else if (G.evening.twist) notice('Tonight: ' + G.evening.twist.text);
@@ -116,10 +118,16 @@ function startEvening(mode) {
 // ---------------------------------------------------------------------------
 // Subtitles, banners, toasts
 // ---------------------------------------------------------------------------
-// System events go to the feed in the friends panel so they never cover the voice chat.
+// System events slide in as console-style notifications, with the friend's
+// portrait when the text is about someone. Dialogue stays in speech bubbles.
 function notice(text) {
-  G.notices.push(text); if (G.notices.length > 2) G.notices.shift();
-  ui.feed.innerHTML = G.notices.map(n => `<div>${esc(n)}</div>`).join('');
+  if (!text || !ui.notes) return;
+  const who = Object.values(G.friends || {}).find(x => text.startsWith(x.name));
+  const n = document.createElement('div'); n.className = 'note';
+  n.innerHTML = (who ? `<img alt="" src="${portraitOf(who)}">` : '<span class="ic">🎮</span>') + `<span>${esc(text)}</span>`;
+  ui.notes.appendChild(n);
+  while (ui.notes.children.length > 3) ui.notes.firstChild.remove();
+  setTimeout(() => { n.classList.add('out'); setTimeout(() => n.remove(), 360); }, 3800);
 }
 function say(f, text, kind, noBubble) {
   if (!text) return;
@@ -174,7 +182,7 @@ function invite(f) {
 }
 function joinLobby(f, quiet) {
   const s = freeSlot(); if (s < 0) return false;
-  G.lobby[s] = f.id; f.inLobby = true; f.ready = false; f.invitePending = 0; f.joinedAt = G.clock;
+  G.lobby[s] = f.id; f.inLobby = true; f.ready = false; f.invitePending = 0; f.joinedAt = G.clock; f.spawnAt = G.t;
   f.kicked = false;
   if (G.ach && G.ach.seen && ROSTER.includes(f.id)) { G.ach.seen[f.id] = true; if (f.id === 'parker' && G.ach.parkerJoinedAt === null) G.ach.parkerJoinedAt = G.clock; }
   const r = f.def.readyTime; f.readyT = G.rng.range(r[0], r[1]) * (1 + 0.3 * f.annoyed);
@@ -184,7 +192,7 @@ function joinLobby(f, quiet) {
   return true;
 }
 function leaveLobby(f, reason) {
-  const s = G.lobby.indexOf(f.id); if (s >= 0) G.lobby[s] = null;
+  const s = G.lobby.indexOf(f.id); if (s >= 0) { G.lobby[s] = null; exitFx(s, f, reason === 'kicked' ? 'kick' : 'glitch'); }
   f.inLobby = false; f.ready = false; f.leaves++; G.log.leaves++;
   G.winT = 0;
   if (reason === 'dc' || reason === 'gone') { f.status = 'Online'; if (f.issue && f.issue.def.type !== 'disconnect') endIssue(f, true); return; }
@@ -286,7 +294,7 @@ function calmDown(f) {
 
 function serversDown(minutes, bannerText, noticeText) {
   G.serverDown = gm2s(minutes);
-  for (const m of lobbyMembers()) { const s = G.lobby.indexOf(m.id); if (s >= 0) G.lobby[s] = null; m.inLobby = false; m.ready = false; m.invitePending = 0; m.status = 'Servers down'; if (m.issue && m.issue.def.type !== 'deadline') endIssue(m, true); if (m.def.stranger) { m.gone = true; m.online = false; } }
+  for (const m of lobbyMembers()) { const s = G.lobby.indexOf(m.id); if (s >= 0) { G.lobby[s] = null; exitFx(s, m, 'glitch'); } m.inLobby = false; m.ready = false; m.invitePending = 0; m.status = 'Servers down'; if (m.issue && m.issue.def.type !== 'deadline') endIssue(m, true); if (m.def.stranger) { m.gone = true; m.online = false; } }
   for (const id of ROSTER) { const f = G.friends[id]; if (f.invitePending > 0) { f.invitePending = 0; f.status = 'Servers down'; } }
   G.winT = 0; G.vote = null;
   banner(bannerText, 'bad', 3); notice(noticeText);
@@ -408,7 +416,6 @@ function tick(dt) {
     }
   } else G.winT = 0;
 
-  if (G.clock > 150) ui.stage.classList.add('night');
   Guide.update(dt);
 }
 
@@ -460,14 +467,13 @@ function spawnConfetti(n, colors) {
 }
 function matchFound() {
   G.state = 'match'; G.matchT = 0; G.matchLine = 0; G.lobbyMinutes = G.clock;
-  spawnConfetti(160, ['#ffd23f', '#ff5a5a', '#4ade80', '#5ac8ff', '#ff8ad8', '#fff']);
-  banner('MATCH FOUND', 'good', 3);
-  ui.stage.classList.add('match');
+  showSplash();
+  setTimeout(() => { if (G.state === 'match') spawnConfetti(160, ['#ffd23f', '#ff5a5a', '#4ade80', '#5ac8ff', '#ff8ad8', '#fff']); }, 3000);
   Sfx.tone(523, 0.15, 'square', 0.2); Sfx.tone(659, 0.15, 'square', 0.2, 0, 0.15); Sfx.tone(784, 0.3, 'square', 0.25, 0, 0.3);
   for (const m of lobbyMembers()) {
     trail(m, SHARE.trail.match);
     if (m.def.lines.matchFound) setTimeout(() => say(m, m.def.lines.matchFound), 600);
-    if (m.def.codeRed) { G.log.withShaun = true; setTimeout(() => { if (G.state === 'match') banner(m.def.lines.matchBanner, 'good', 3); }, 2600); }
+    if (m.def.codeRed) { G.log.withShaun = true; setTimeout(() => { if (G.state === 'match') banner(m.def.lines.matchBanner, 'good', 3); }, 3600); }
   }
   G.shake = 0.6;
 }
@@ -597,11 +603,7 @@ function showResult(r, mode) {
   refreshCountdowns();
 }
 function shareTextFor(r) {
-  const T = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]);
-  const lines = [T(SHARE.title, { day: r.day })];
-  if (r.kind === 'win') lines.push(T(SHARE.win, { lobby: fmtDur(r.lobbyMinutes), match: fmtDur(r.matchMinutes) }));
-  else { lines.push(r.kind === 'vibe' ? SHARE.loseVibe : r.kind === 'quit' ? SHARE.loseQuit : SHARE.loseTime); lines.push(T(SHARE.lobbyOnly, { lobby: fmtDur(r.lobbyMinutes) })); }
-  if (r.shaun) lines.push(r.shaun.withMatch ? SHARE.shaunMatch : r.shaun.appeared ? T(SHARE.shaunLeft, { min: fmtDur(Math.max(1, r.shaun.stayedMin)) }) : SHARE.shaunNever);
+  const lines = [tpl(SHARE.title, { day: r.day })].concat(shareHead(r));
   // one row per friend: the emoji story of their night
   lines.push('');
   const ids = ROSTER.concat(Object.keys(r.trail || {}).filter(id => !ROSTER.includes(id)));
@@ -616,6 +618,30 @@ function shareTextFor(r) {
   if (r.golden) lines.push(SHARE.golden);
   lines.push(gameUrl());
   return lines.join('\n');
+}
+function shareHead(r) {
+  const T = tpl, lines = [];
+  if (r.kind === 'win') lines.push(T(SHARE.win, { lobby: fmtDur(r.lobbyMinutes), match: fmtDur(r.matchMinutes) }));
+  else { lines.push(r.kind === 'vibe' ? SHARE.loseVibe : r.kind === 'quit' ? SHARE.loseQuit : SHARE.loseTime); lines.push(T(SHARE.lobbyOnly, { lobby: fmtDur(r.lobbyMinutes) })); }
+  if (r.shaun) lines.push(r.shaun.withMatch ? SHARE.shaunMatch : r.shaun.appeared ? T(SHARE.shaunLeft, { min: fmtDur(Math.max(1, r.shaun.stayedMin)) }) : SHARE.shaunNever);
+  return lines;
+}
+// Share an image card when the phone supports it, text otherwise.
+async function shareResult(r) {
+  const text = shareTextFor(r);
+  try {
+    if (document.fonts && document.fonts.load) await document.fonts.load('20px Bungee');
+    const cv = shareCanvas(r);
+    const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+    const file = blob && new File([blob], 'the-lobby-' + r.day + '.png', { type: 'image/png' });
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+  } catch (_) {}
+  shareText(text, toast);
+}
+function shareCanvas(r) {
+  return Art.shareCard({ title: tpl(SHARE.title, { day: r.day }), lines: shareHead(r), entries: resultEntries(r), url: gameUrl().replace(/^https?:\/\//, ''), clock: r.lobbyMinutes, win: r.kind === 'win' });
 }
 function showStats() {
   const s = Store.stats;
@@ -840,7 +866,7 @@ function shaunAppears(f) {
 }
 function shaunLeaves(f) {
   const S = f.shaun; S.left = true; trail(f, SHARE.trail.shaunLeft);
-  if (f.inLobby) { const s = G.lobby.indexOf(f.id); if (s >= 0) G.lobby[s] = null; f.inLobby = false; f.ready = false; G.winT = 0; }
+  if (f.inLobby) { const s = G.lobby.indexOf(f.id); if (s >= 0) { G.lobby[s] = null; exitFx(s, f, 'glitch'); } f.inLobby = false; f.ready = false; G.winT = 0; }
   f.online = false; f.gone = true; f.goneStatus = f.def.goneStatus; f.status = f.goneStatus; f.invitePending = 0;
   banner(f.def.lines.gone, 'bad', 3); notice(f.def.lines.gone);
   Sfx.tone(440, 0.3, 'sine', 0.15, 220);
@@ -1031,13 +1057,32 @@ function openMenu(f) {
   ui.menuResult.textContent = '';
   buildMenu(); updateMenu();
   ui.menu.classList.remove('hidden');
+  positionMenu();
 }
+// The menu opens beside the friend, so the lobby stays visible.
+function positionMenu() {
+  const f = menuTarget; if (!f) return;
+  const sh = ui.menuSheet, st = ui.stage.getBoundingClientRect(), pad = 6, vw = window.innerWidth;
+  const s = G.lobby.indexOf(f.id);
+  let left, width;
+  if (s >= 0) {
+    const r = slotEls[s].el.getBoundingClientRect();
+    const roomR = st.right - r.right - pad * 2, roomL = r.left - st.left - pad * 2;
+    if (roomR >= roomL) { width = Math.min(380, Math.max(230, roomR)); left = r.right + pad; }
+    else { width = Math.min(380, Math.max(230, roomL)); left = r.left - pad - width; }
+  } else { width = Math.min(380, st.width - pad * 2); left = st.left + pad; }
+  left = clamp(left, pad, vw - width - pad);
+  sh.style.left = left + 'px'; sh.style.width = width + 'px';
+  sh.style.top = (st.top + pad) + 'px'; sh.style.maxHeight = (st.height - pad * 2) + 'px';
+}
+const CD_MAX = { ping: 4, text: 20, call: 30, calm: 8 };
+function setCdFill(mb, frac) { const v = clamp(frac, 0, 1).toFixed(2); if (mb.lastCd !== v) { mb.lastCd = v; mb.el.style.setProperty('--cd', v); } }
 // Built once per open and updated in place: rebuilding buttons every frame
 // swallowed taps on touch screens.
 function buildMenu() {
   const f = menuTarget; if (!f) return;
   menuSig = menuSignature(f);
-  ui.menuTitle.textContent = f.name;
+  ui.menuTitle.textContent = f.name; ui.menuPortrait.src = portraitOf(f);
   ui.menuActions.innerHTML = ''; menuButtons = [];
   const addBtn = (label, hint, cls, canFn, runFn) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = cls || '';
@@ -1089,10 +1134,11 @@ function updateMenu() {
   const sub = bits.join(' · ');
   if (ui.menuSub.textContent !== sub) ui.menuSub.textContent = sub;
   for (const mb of menuButtons) {
-    if (mb.sig) { const h = sigHint(f, mb.sig); if (h !== mb.lastSmall) { mb.lastSmall = h; mb.small.textContent = h; } const d = !canRunSig(f, mb.sig); if (d !== mb.lastDisabled) { mb.lastDisabled = d; mb.el.disabled = d; } continue; }
+    if (mb.sig) { setCdFill(mb, mb.sig.cooldown ? (f.cd['sig_' + mb.sig.id] || 0) / mb.sig.cooldown : 0); const h = sigHint(f, mb.sig); if (h !== mb.lastSmall) { mb.lastSmall = h; mb.small.textContent = h; } const d = !canRunSig(f, mb.sig); if (d !== mb.lastDisabled) { mb.lastDisabled = d; mb.el.disabled = d; } continue; }
     if (!mb.key) { if (mb.hint !== mb.lastSmall) { mb.lastSmall = mb.hint; mb.small.textContent = mb.hint; } const d = !mb.canFn(); if (d !== mb.lastDisabled) { mb.lastDisabled = d; mb.el.disabled = d; } continue; }
     const a = ACTIONS[mb.key];
     const cd = f.cd[mb.key] || 0;
+    setCdFill(mb, cd > 0 ? cd / (CD_MAX[mb.key] || cd) : 0);
     const small = cd > 0 ? 'cooldown ' + Math.ceil(cd) + 's' : (mb.key === 'listen' ? Math.ceil(f.ignoredT) + 's to answer' : tpl(AT[mb.key].hint, nameVars(f)));
     if (small !== mb.lastSmall) { mb.lastSmall = small; mb.small.textContent = small; }
     const dis = !a.can(f);
@@ -1142,46 +1188,73 @@ function statusText(f) {
   return f.online ? 'Online' : 'Offline';
 }
 const downloadPct = I => clamp(Math.floor(100 * (1 - I.remaining / I.total)), 0, 99);
+const portraitOf = f => Art.portrait(f.def.look, 48);
+
+// ---------------------------------------------------------------------------
+// Friends list: portraits with presence rings, online friends sorted to the top
+// ---------------------------------------------------------------------------
 const listRows = {};
+let listOrder = '';
+function presence(f) {
+  if (f.inLobby) return 'lobby';
+  if (f.gone) return 'offline';
+  if (f.online || f.invitePending > 0) return 'online';
+  if (sneakSuspicious(f) || f.disconnected) return 'away';
+  return 'offline';
+}
+const PRES_RANK = { lobby: 0, online: 1, away: 2, offline: 3 };
 function buildList() {
-  ui.list.innerHTML = '';
+  ui.list.innerHTML = ''; listOrder = '';
   for (const id of ROSTER) {
     const f = G.friends[id];
     const li = document.createElement('li');
-    li.innerHTML = `<span class="dot"></span><div class="finfo"><div class="fname">${f.name}</div><div class="fstatus"></div></div>`;
+    li.innerHTML = `<span class="pt-ring"><img alt="" src="${portraitOf(f)}"></span><div class="finfo"><div class="fname">${esc(f.name)}</div><div class="fstatus"></div></div>`;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'invite';
     b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); if (ACTIONS.invite.can(f)) { ACTIONS.invite.run(f); updateList(); } });
     li.appendChild(b);
     li.addEventListener('click', e => { e.preventDefault(); openMenu(f); });
     ui.list.appendChild(li);
-    listRows[id] = { li, dot: li.querySelector('.dot'), status: li.querySelector('.fstatus'), btn: b, last: '' };
+    listRows[id] = { li, ring: li.querySelector('.pt-ring'), status: li.querySelector('.fstatus'), btn: b, last: '' };
   }
 }
 function updateList() {
-  const count = lobbyMembers().length + '/' + needed() + ' in party';
+  const count = lobbyMembers().length + '/' + needed();
   if (ui.friendCount.textContent !== count) ui.friendCount.textContent = count;
+  const rank = id => { const f = G.friends[id]; return PRES_RANK[presence(f)] * 10 + (f.gone ? 50 : 0) + ROSTER.indexOf(id) * 0.1; };
+  const order = ROSTER.slice().sort((a, b) => rank(a) - rank(b)).join(',');
+  if (order !== listOrder) { listOrder = order; for (const id of order.split(',')) ui.list.appendChild(listRows[id].li); }
   for (const id of ROSTER) {
     const f = G.friends[id], r = listRows[id]; if (!r) continue;
-    const st = statusText(f);
-    const dot = f.inLobby ? 'dot lobby' : f.online ? 'dot online' : sneakSuspicious(f) ? 'dot away blink' : f.disconnected ? 'dot away' : 'dot';
+    const st = statusText(f), pres = presence(f);
+    const ring = 'pt-ring ' + pres + (sneakSuspicious(f) ? ' blink' : '');
     const btn = f.inLobby ? 'IN' : f.invitePending > 0 ? '…' : 'INVITE';
     const dis = f.inLobby || f.invitePending > 0 || !ACTIONS.invite.can(f);
-    const key = st + '|' + dot + '|' + btn + '|' + dis;
+    const key = st + '|' + ring + '|' + btn + '|' + dis;
     if (r.last === key) continue;
     r.last = key;
-    r.status.textContent = st; r.dot.className = dot;
-    r.btn.textContent = btn; r.btn.disabled = dis; r.btn.className = 'invite' + (btn === '…' ? ' pending' : '');
+    r.status.textContent = st; r.ring.className = ring; r.li.classList.toggle('in', f.inLobby);
+    r.btn.textContent = btn; r.btn.disabled = dis; r.btn.className = 'invite' + (btn === '…' ? ' pending' : btn === 'IN' ? ' in' : '');
   }
 }
+
+// ---------------------------------------------------------------------------
+// Slots: a player card under each platform and a speech bubble over each head
+// ---------------------------------------------------------------------------
 const slotEls = [];
 function buildSlots() {
   ui.slots.innerHTML = ''; slotEls.length = 0;
   for (let i = 0; i < SLOTS; i++) {
-    const d = document.createElement('div'); d.className = 'slot empty';
-    d.innerHTML = `<div class="tag"><div class="icon"></div><span class="name"></span><span class="state"></span><div class="bar"><div></div></div></div><div class="bubble hidden"></div>`;
+    const d = document.createElement('div'); d.className = 'slot';
+    d.innerHTML = `<div class="bubble hidden"></div><div class="card empty"><img class="pt" alt=""><div class="cn"><span class="name"></span><span class="ck">✓</span></div><div class="bar"><div></div></div><div class="state"></div></div>`;
     d.addEventListener('click', e => { e.preventDefault(); const id = G.lobby[i]; if (id) openMenu(G.friends[id]); });
-    ui.slots.appendChild(d); slotEls.push(d);
+    ui.slots.appendChild(d);
+    slotEls.push({ el: d, bub: d.querySelector('.bubble'), card: d.querySelector('.card'), pt: d.querySelector('.pt'), name: d.querySelector('.name'), state: d.querySelector('.state'), bar: d.querySelector('.bar'), key: '', bubKey: '', ptId: '' });
   }
+}
+const menuOpen = () => !!menuTarget && !ui.menu.classList.contains('hidden');
+function blockersShown() {
+  const members = lobbyMembers(), readyN = members.filter(m => m.ready).length;
+  return G.state === 'playing' && ((members.length >= needed() && readyN >= needed() - 2) || G.rcHighlight > 0);
 }
 function renderHud() {
   if (G.shake > 0.05) ui.stage.style.transform = `translate(${(Math.random() - 0.5) * G.shake * 10}px, ${(Math.random() - 0.5) * G.shake * 8}px)`;
@@ -1192,74 +1265,102 @@ function renderHud() {
   ui.clock.textContent = fmtClock(G.clock);
   ui.clock.classList.toggle('late', G.clock > 210);
   ui.vibeFill.style.width = Math.round(G.vibe) + '%';
+  const face = G.state === 'match' ? '🤩' : G.vibe > 75 ? '😁' : G.vibe > 50 ? '🙂' : G.vibe > 30 ? '😐' : G.vibe > 15 ? '😬' : '💀';
+  if (ui.vibeFace.textContent !== face) { ui.vibeFace.textContent = face; ui.vibeFace.classList.add('bump'); setTimeout(() => ui.vibeFace.classList.remove('bump'), 220); }
   const members = lobbyMembers(), readyN = members.filter(m => m.ready).length;
-  ui.readyCount.textContent = G.chatBug > 0 ? EVENTS.chatbug.readyCheck : readyN + ' / ' + needed() + (G.winT > 0 ? ' · ' + Math.ceil(WIN_HOLD - G.winT) : '');
+  ui.readyCount.textContent = G.chatBug > 0 ? EVENTS.chatbug.readyCheck : readyN + ' / ' + needed();
   ui.readyCheck.classList.toggle('all', members.length >= needed() && readyN === members.length);
   ui.readyCheck.disabled = G.rcCooldown > 0 || G.chatBug > 0;
-  // who is holding things up: shown when it's close, or right after a Ready Check
-  const close = members.length >= needed() && readyN >= needed() - 2;
-  const showBlockers = G.state === 'playing' && (close || G.rcHighlight > 0);
+  // the 3-2-1 while everyone holds ready
+  const cd = G.state === 'playing' && G.winT > 0 ? Math.ceil(WIN_HOLD - G.winT) : 0;
+  if (cd !== G.cdShown) {
+    G.cdShown = cd;
+    if (cd) { ui.countdown.textContent = cd; ui.countdown.classList.remove('hidden', 'tick'); void ui.countdown.offsetWidth; ui.countdown.classList.add('tick'); Sfx.tone(520 + (WIN_HOLD - cd) * 180, 0.14, 'square', 0.12); }
+    else ui.countdown.classList.add('hidden');
+  }
+  const showBlockers = blockersShown();
   for (let i = 0; i < SLOTS; i++) {
-    const el = slotEls[i], id = G.lobby[i], f = id ? G.friends[id] : null;
-    const bub = el.querySelector('.bubble');
+    const S = slotEls[i], id = G.lobby[i], f = id ? G.friends[id] : null;
     const bubKey = f && f.bubbleT > 0 ? f.bubble + '|' + f.bubbleKind : '';
-    if (bub.dataset.key !== bubKey) { bub.dataset.key = bubKey; if (!bubKey) bub.classList.add('hidden'); else { bub.textContent = f.bubble; bub.className = 'bubble ' + f.bubbleKind; } }
-    const waiting = f && f.ready && f.waitT > 4;
-    const blocker = !!f && showBlockers && !f.ready;
-    const badge = f ? chemBadge(f) : '';
-    const dl = f && f.afk && f.issue && f.issue.def.type === 'download' ? downloadPct(f.issue) : -1;
-    const key = f ? `${f.id}|${etaText(f)}|${f.ready}|${f.screaming > 0}|${f.mood}|${waiting}|${f.afk}|${f.broken}|${f.issue ? f.issue.def.id : ''}|${f.deadlineAt}|${Math.round((f.def.patience ? f.patience : f.anger) / 4)}|${blocker}|${badge}|${dl}` : (i < needed() ? 'empty' : 'na');
-    if (el.dataset.key === key) continue;
-    el.dataset.key = key;
-    el.className = 'slot' + (f ? (f.screaming > 0 ? ' screaming' : '') + (f.def.codeRed ? ' codered' : '') + (blocker ? ' blocker' : '') : ' empty');
-    const icon = el.querySelector('.icon'), name = el.querySelector('.name'), st = el.querySelector('.state'), bar = el.querySelector('.bar');
-    if (!f) { icon.textContent = ''; name.textContent = i < needed() ? 'EMPTY' : '—'; st.textContent = i < needed() ? 'invite someone' : ''; bar.style.visibility = 'hidden'; continue; }
+    if (S.bubKey !== bubKey) { S.bubKey = bubKey; if (!bubKey) S.bub.classList.add('hidden'); else { S.bub.textContent = f.bubble; S.bub.className = 'bubble ' + f.bubbleKind; } }
+    if (!f) {
+      const key = i < needed() ? 'empty' : 'na';
+      if (S.key === key) continue;
+      S.key = key; S.el.className = 'slot'; S.card.className = 'card empty';
+      S.name.textContent = 'EMPTY'; S.state.textContent = 'invite someone'; S.ptId = '';
+      continue;
+    }
     const I = f.issue;
-    icon.textContent = f.screaming > 0 ? '📢' : (f.afk || f.broken) && I ? I.def.icon : f.mood === 'annoyed' && !f.ready ? '😤' : f.ready ? '✅' : I && I.def.type !== 'deadline' ? I.def.icon : '🔴';
-    name.textContent = f.name + badge;
-    let txt = f.screaming > 0 ? 'SCREAMING' : dl >= 0 ? 'UPDATING ' + dl + '%' : f.afk && I ? 'AFK · ' + I.def.label.toUpperCase() + etaText(f).toUpperCase() : f.broken && I ? I.def.label.toUpperCase() : waiting ? 'READY · WAITING…' : f.mood === 'annoyed' ? (f.ready ? 'READY · ANNOYED' : 'ANNOYED') : f.ready ? 'READY' : 'NOT READY';
+    const waiting = f.ready && f.waitT > 4;
+    const blocker = showBlockers && !f.ready;
+    const badge = chemBadge(f);
+    const dl = f.afk && I && I.def.type === 'download' ? downloadPct(I) : -1;
+    let txt = f.screaming > 0 ? 'SCREAMING' : dl >= 0 ? 'UPDATING ' + dl + '%' : f.afk && I ? 'AFK · ' + I.def.label.toUpperCase() + etaText(f).toUpperCase() : f.broken && I ? I.def.label.toUpperCase() : waiting ? 'READY · WAITING' : f.mood === 'annoyed' ? (f.ready ? 'READY · ANNOYED' : 'ANNOYED') : f.ready ? 'READY' : 'NOT READY';
     if (I && I.def.type === 'deadline') txt += ' · ' + I.def.icon + ' ' + fmtClock(f.deadlineAt);
     if (f.def.codeRed) txt = 'CODE RED · ' + txt;
-    st.textContent = txt;
-    st.className = 'state ' + (f.screaming > 0 || f.afk || f.broken ? 'notready' : waiting ? 'waiting' : f.mood === 'annoyed' ? 'annoyed' : f.ready ? 'ready' : 'notready');
-    bar.style.visibility = 'visible';
-    if (f.def.anger) { bar.className = 'bar anger'; bar.firstElementChild.style.width = Math.round(f.anger) + '%'; }
-    else { const pct = f.patience / f.def.patience.max * 100; bar.className = 'bar' + (pct < 30 ? ' low' : ''); bar.firstElementChild.style.width = Math.round(pct) + '%'; }
+    const look = f.screaming > 0 ? 'screaming' : f.afk || f.broken ? 'away' : waiting ? 'waiting' : f.mood === 'annoyed' ? 'annoyed' : f.ready ? 'ready' : 'notready';
+    const cls = 'card ' + look + (f.def.codeRed ? ' codered' : '') + (blocker ? ' blocker' : '') + (menuTarget === f && menuOpen() ? ' focus' : '');
+    const pct = f.def.anger ? f.anger / f.def.anger.max * 100 : f.patience / f.def.patience.max * 100;
+    const key = `${f.id}|${cls}|${txt}|${badge}|${Math.round(pct / 3)}`;
+    if (S.key === key) continue;
+    S.key = key;
+    S.el.className = 'slot' + (f.screaming > 0 ? ' screaming' : '');
+    S.card.className = cls;
+    if (S.ptId !== f.id) { S.ptId = f.id; S.pt.src = portraitOf(f); }
+    S.name.textContent = f.name + badge;
+    S.state.textContent = txt;
+    S.bar.className = 'bar' + (f.def.anger ? ' anger' : pct < 30 ? ' low' : '');
+    S.bar.firstElementChild.style.width = Math.round(pct) + '%';
   }
   updateList();
-  if (menuTarget && !ui.menu.classList.contains('hidden')) updateMenu();
+  if (menuOpen()) updateMenu();
   if (G.vote && G.vote.issue && G.state === 'playing') { ui.banner.textContent = tpl(G.vote.issue.def.banner, { s: Math.ceil(G.vote.voteT) }); if (ui.banner.className !== 'bad') ui.banner.className = 'bad'; ui.banner.classList.remove('hidden'); G.bannerT = 0.5; }
   if (G.bannerT > 0) { G.bannerT -= 1 / 60; if (G.bannerT <= 0) ui.banner.classList.add('hidden'); }
 }
 
 // ---------------------------------------------------------------------------
-// Canvas: chunky cartoon friends on the stage
+// Canvas: the stage (art.js draws, this decides what)
 // ---------------------------------------------------------------------------
-let dpr = 1, CW = 1, CH = 1;
+let dpr = 1, CW = 1, CH = 1, GEO = { baseY: 0, s: 1, horizon: 0 }, bgKey = '';
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 3);
   const r = ui.stage.getBoundingClientRect();
   CW = Math.max(1, r.width); CH = Math.max(1, r.height);
-  ui.canvas.width = Math.round(CW * dpr); ui.canvas.height = Math.round(CH * dpr);
+  for (const cv of [ui.canvas, ui.bg]) { cv.width = Math.round(CW * dpr); cv.height = Math.round(CH * dpr); }
+  const cardH = CH < 320 ? 46 : 50;
+  const baseY = CH - cardH - 16;
+  const s = clamp(Math.min(CW / SLOTS / 124, (baseY - 84) / 186), 0.45, 1.4);
+  GEO = { baseY, s, horizon: Math.round(CH * 0.56) };
+  ui.slots.style.setProperty('--bubble-y', Math.round(CH - (baseY - 178 * s) + 4) + 'px');
+  bgKey = '';
+  if (menuOpen()) positionMenu();
 }
 window.addEventListener('resize', () => setTimeout(resize, 50));
 window.addEventListener('orientationchange', () => setTimeout(resize, 250));
 
+function exitFx(slot, f, kind) { if (G.slotFx) G.slotFx[slot] = { id: f.id, kind, t0: G.t }; }
 function drawScene() {
+  if (G.state === 'title' || !G.lobby.length) return;
+  const match = G.state === 'match' || (G.state === 'over' && G.result && G.result.kind === 'win');
+  const key = CW + 'x' + CH + '|' + Math.floor(G.clock) + '|' + match;
+  if (key !== bgKey) { bgKey = key; bgx.setTransform(dpr, 0, 0, dpr, 0, 0); bgx.clearRect(0, 0, CW, CH); Art.background(bgx, CW, CH, { clock: G.clock, horizon: GEO.horizon, match }); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, CW, CH);
-  if (G.state === 'title' || !G.lobby.length) return;
   updateConfetti();
   const shx = G.shake > 0 ? (Math.random() - 0.5) * G.shake * 8 : 0, shy = G.shake > 0 ? (Math.random() - 0.5) * G.shake * 8 : 0;
   G.shake = Math.max(0, G.shake - 1 / 60 * 1.5);
-  const slotW = CW / SLOTS;
-  const baseY = CH * 0.78 + shy;
-  const scale = clamp(Math.min(slotW / 110, CH / 300), 0.6, 1.6);
+  const slotW = CW / SLOTS, s = GEO.s, baseY = GEO.baseY + shy;
+  const showBlockers = blockersShown(), pulse = G.state === 'playing' && G.winT > 0;
   for (let i = 0; i < SLOTS; i++) {
-    const id = G.lobby[i];
-    const cx = slotW * (i + 0.5) + shx;
-    if (!id) { drawEmpty(cx, baseY, scale, i < needed()); continue; }
-    drawFriend(G.friends[id], cx, baseY, scale);
+    const id = G.lobby[i], f = id ? G.friends[id] : null, cx = slotW * (i + 0.5) + shx;
+    const state = f ? (f.ready ? 'ready' : showBlockers ? 'blocker' : f.def.codeRed ? 'codered' : 'notready') : (i < needed() ? 'open' : 'off');
+    Art.platform(ctx, cx, baseY, s, state, { t: G.t, pulse, focus: !!f && menuTarget === f && menuOpen() });
+    if (f) { drawFriend(f, cx, baseY, s); continue; }
+    const fx = G.slotFx && G.slotFx[i];
+    if (fx && G.t - fx.t0 < 0.7 && G.friends[fx.id]) {
+      const k = (G.t - fx.t0) / 0.7, fr = G.friends[fx.id];
+      Art.avatar(ctx, fr.def.look, cx, baseY, s, fx.kind === 'kick' ? { t: G.t, phase: fr.phase, kick: k } : { t: G.t, phase: fr.phase, glitch: k });
+    }
   }
   drawConfetti();
 }
@@ -1271,78 +1372,55 @@ function updateConfetti() {
 function drawConfetti() {
   for (const p of G.confetti) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); }
 }
-function drawEmpty(cx, baseY, s, active) {
-  ctx.save(); ctx.translate(cx, baseY);
-  ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(0, 6 * s, 34 * s, 9 * s, 0, 0, 7); ctx.fill();
-  if (active) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.setLineDash([6 * s, 5 * s]); ctx.lineWidth = 2;
-    rr(-24 * s, -120 * s, 48 * s, 118 * s, 14 * s); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = `900 ${28 * s}px ${'-apple-system, Helvetica, Arial'}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('+', 0, -62 * s);
-  }
-  ctx.restore();
-}
-function rr(x, y, w, h, r) {
-  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
-}
-function drawFriend(f, cx, baseY, s) {
-  const look = f.def.look, t = G.t, skin = skinOf(f);
-  const screaming = f.screaming > 0, talking = f.talkT > 0, ready = f.ready, match = G.state === 'match';
-  const bob = Math.sin(t * 2.2 + f.phase) * 2.5 * s + (match ? Math.abs(Math.sin(t * 6 + f.phase)) * -14 * s : 0);
-  const sway = Math.sin(t * 1.3 + f.phase) * 0.03;
-  ctx.save(); ctx.translate(cx, baseY);
-  // shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(0, 6 * s, 34 * s, 9 * s, 0, 0, 7); ctx.fill();
-  ctx.translate(0, bob); ctx.rotate(sway);
-  ctx.lineJoin = 'round';
-  // legs
-  ctx.fillStyle = look.pants;
-  rr(-20 * s, -46 * s, 17 * s, 48 * s, 7 * s); ctx.fill();
-  rr(3 * s, -46 * s, 17 * s, 48 * s, 7 * s); ctx.fill();
-  ctx.fillStyle = '#222'; rr(-22 * s, -6 * s, 21 * s, 10 * s, 4 * s); ctx.fill(); rr(1 * s, -6 * s, 21 * s, 10 * s, 4 * s); ctx.fill();
-  // body
-  ctx.fillStyle = look.shirt; rr(-28 * s, -104 * s, 56 * s, 64 * s, 14 * s); ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,0.12)'; rr(-28 * s, -60 * s, 56 * s, 20 * s, 10 * s); ctx.fill();
-  // arms
-  const armUp = (ready || screaming || match) && !f.afk;
-  const wave = Math.sin(t * (screaming ? 25 : 3) + f.phase) * (screaming ? 0.25 : 0.08);
-  for (const side of [-1, 1]) {
-    ctx.save(); ctx.translate(side * 28 * s, -92 * s);
-    const up = armUp && (side === 1 || screaming || match);
-    ctx.rotate(up ? side * (-2.4 + wave) : side * (0.25 + wave));
-    ctx.fillStyle = look.shirt; rr(-7 * s, -4 * s, 14 * s, 44 * s, 7 * s); ctx.fill();
-    ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(0, 42 * s, 8 * s, 0, 7); ctx.fill();
-    ctx.restore();
-  }
-  // head
-  ctx.fillStyle = skin; rr(-26 * s, -160 * s, 52 * s, 58 * s, 18 * s); ctx.fill();
-  // hair
-  ctx.fillStyle = look.hairColor;
-  if (look.hair === 'medium') { rr(-29 * s, -166 * s, 58 * s, 28 * s, 16 * s); ctx.fill(); rr(-29 * s, -150 * s, 9 * s, 34 * s, 4 * s); ctx.fill(); rr(20 * s, -150 * s, 9 * s, 34 * s, 4 * s); ctx.fill(); }
-  else { rr(-27 * s, -165 * s, 54 * s, 20 * s, 14 * s); ctx.fill(); }
-  if (look.cap) { ctx.fillStyle = look.cap; rr(-29 * s, -172 * s, 58 * s, 20 * s, 10 * s); ctx.fill(); rr(-44 * s, -158 * s, 22 * s, 6 * s, 3 * s); ctx.fill(); }
-  // eyes (blink)
+function poseOf(f) {
   f.blink -= 1 / 60; if (f.blink <= -0.12) f.blink = 2 + Math.random() * 4;
-  const closed = f.blink < 0 || f.afk;
-  ctx.fillStyle = '#1b1b1b';
-  for (const side of [-1, 1]) {
-    if (closed) { ctx.fillRect(side * 10 * s - 4 * s, -132 * s, 8 * s, 2 * s); }
-    else { ctx.beginPath(); ctx.ellipse(side * 10 * s, -132 * s, 3.5 * s, screaming ? 5 * s : 4 * s, 0, 0, 7); ctx.fill(); }
-  }
-  if (look.freckles) { ctx.fillStyle = 'rgba(160,80,40,0.6)'; for (let i = 0; i < 6; i++) ctx.fillRect((-14 + (i % 3) * 10 + (i > 2 ? 4 : 0)) * s, (-122 + (i > 2 ? 4 : 0)) * s, 2 * s, 2 * s); }
-  // mouth
-  ctx.fillStyle = '#7a2a2a';
-  if (screaming) { ctx.beginPath(); ctx.ellipse(0, -112 * s, 9 * s, (7 + Math.sin(t * 30) * 2) * s, 0, 0, 7); ctx.fill(); }
-  else if (talking) { ctx.beginPath(); ctx.ellipse(0, -113 * s, 6 * s, (2 + Math.abs(Math.sin(t * 18)) * 4) * s, 0, 0, 7); ctx.fill(); }
-  else if (ready || match) { ctx.strokeStyle = '#7a2a2a'; ctx.lineWidth = 2.5 * s; ctx.beginPath(); ctx.arc(0, -118 * s, 8 * s, 0.3, Math.PI - 0.3); ctx.stroke(); }
-  else { ctx.fillRect(-6 * s, -114 * s, 12 * s, 2.5 * s); }
-  if (f.afk) { ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = `900 ${14 * s}px -apple-system, Helvetica, Arial`; ctx.textAlign = 'left'; ctx.fillText('z', 26 * s, -150 * s + Math.sin(t * 2) * 3 * s); ctx.fillText('Z', 34 * s, -164 * s + Math.sin(t * 2 + 1) * 3 * s); }
-  // anger blush
-  if (f.def.anger && f.anger > 60) { ctx.fillStyle = `rgba(255,60,40,${(f.anger - 60) / 80})`; rr(-26 * s, -160 * s, 52 * s, 58 * s, 18 * s); ctx.fill(); }
-  ctx.restore();
+  const I = f.issue, prop = I && I.def.prop;
+  const p = {
+    t: G.t, phase: f.phase, ready: f.ready, screaming: f.screaming > 0, talking: f.talkT > 0, afk: f.afk, match: G.state === 'match',
+    annoyed: f.mood === 'annoyed' && !f.ready, waiting: f.ready && f.waitT > 4 && G.state === 'playing', closed: f.blink < 0,
+    spiral: prop === 'spiralEyes', bottle: prop === 'bottle',
+    megaphone: !!f.def.outburst && !hasBuff(f, 'muted') && (f.ignoredT > 0 || (f.bubbleT > 0 && f.bubbleKind === 'scream')),
+    angerK: f.def.anger ? f.anger / f.def.anger.max : 0,
+    download: I && I.def.type === 'download' && f.afk ? 1 - I.remaining / I.total : null,
+    icon: I && I.def.type !== 'deadline' && I.def.type !== 'download' ? I.def.icon : null,
+  };
+  if (f.spawnAt !== undefined && G.t - f.spawnAt < 0.6) p.spawn = (G.t - f.spawnAt) / 0.6;
+  return p;
+}
+function drawFriend(f, cx, baseY, s) { Art.avatar(ctx, f.def.look, cx, baseY, s, poseOf(f)); }
+
+// Title lineup and result lineup
+function fitCanvas(cv) {
+  const r = cv.getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height);
+  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  return { c, w, h };
+}
+const TITLE_POSES = { shaun: { ready: true }, matt: { ready: true }, justin: { angerK: 0.75 }, andre: { megaphone: true }, nickyb: { spiral: true }, parker: { ready: true, waiting: true }, nickyc: { annoyed: true } };
+function drawTitleCrew(t) {
+  const { c, w, h } = fitCanvas(ui.titleCrew);
+  Art.lineup(c, w, h, ROSTER.map(id => ({ look: FRIENDS[id].look, name: FRIENDS[id].name, platform: TITLE_POSES[id] && TITLE_POSES[id].ready ? 'ready' : 'notready', pose: TITLE_POSES[id] })), { t, labels: true, labelSize: 8 });
+}
+function resultEntries(r) {
+  const ids = ROSTER.concat(Object.keys(r.trail || {}).filter(id => !ROSTER.includes(id) && FRIENDS[id]));
+  return ids.map(id => {
+    const tr = (r.trail || {})[id] || [], played = tr.includes(SHARE.trail.match), never = tr.length === 1 && tr[0] === SHARE.trail.never;
+    return { look: FRIENDS[id].look, name: FRIENDS[id].name, trail: tr, platform: played ? 'ready' : 'notready',
+      pose: played ? { match: true, ready: true } : never ? { afk: true, alpha: 0.6 } : r.kind === 'win' ? { ready: false } : { annoyed: true } };
+  });
+}
+function drawResultCrew(r, t) {
+  const { c, w, h } = fitCanvas(ui.resultCrew);
+  Art.lineup(c, w, h, resultEntries(r), { t, labels: true, labelSize: 8, trailSize: 11 });
+}
+
+// Match found: a full-screen splash that drops into the map
+let splashT = null;
+function showSplash() {
+  ui.splash.innerHTML = `<div class="sp-title">${esc(LOBBY_ART.splash)}</div><div class="sp-map">${Art.mapSVG()}<div class="sp-plane">✈️</div></div><div class="sp-drop">${esc(LOBBY_ART.drop)}</div>`;
+  ui.splash.classList.remove('hidden');
+  clearTimeout(splashT); splashT = setTimeout(() => ui.splash.classList.add('hidden'), 3300);
 }
 
 // ---------------------------------------------------------------------------
@@ -1358,6 +1436,9 @@ function boot() {
   ui.titleTwist.textContent = plan.golden ? GOLDEN.text : 'Tonight: ' + plan.twist.text;
   ui.titleTwist.classList.toggle('golden', plan.golden);
   ui.titleBest.textContent = bestText(n);
+  ui.modeName.textContent = LOBBY_ART.mode; ui.modeSub.textContent = LOBBY_ART.modeSub;
+  ui.mapHead.textContent = LOBBY_ART.mapLabel; ui.mapName.textContent = LOBBY_ART.mapName;
+  if (!ui.mapImg.firstChild) ui.mapImg.innerHTML = Art.mapSVG();
   ui.title.classList.remove('hidden');
   rotateTitleTip();
   refreshCountdowns();
@@ -1388,7 +1469,7 @@ function loadThen(fn) {
 window.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('button')) Sfx.tone(1500, 0.03, 'square', 0.05); }, { passive: true });
 ui.start.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening()); });
 ui.again.addEventListener('click', e => { e.preventDefault(); Sfx.init(); loadThen(() => startEvening()); });
-ui.share.addEventListener('click', e => { e.preventDefault(); if (G.result) shareText(shareTextFor(G.result), toast); });
+ui.share.addEventListener('click', e => { e.preventDefault(); if (G.result) shareResult(G.result); });
 ui.stats.addEventListener('click', e => { e.preventDefault(); showStats(); });
 ui.statsClose.addEventListener('click', e => { e.preventDefault(); ui.statsScreen.classList.add('hidden'); });
 
@@ -1407,7 +1488,7 @@ function resumeGame() {
 ui.pauseBtn.addEventListener('click', e => { e.preventDefault(); pauseGame(); });
 ui.resume.addEventListener('click', e => { e.preventDefault(); resumeGame(); });
 ui.quit.addEventListener('click', e => { e.preventDefault(); if (G.state !== 'paused') return; ui.pauseScreen.classList.add('hidden'); G.state = 'playing'; endEvening('quit'); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && !(window.LOBBY && window.LOBBY.noAutoPause)) pauseGame(); });   // noAutoPause: test hook only
 
 // ---------------------------------------------------------------------------
 // First-evening guide: one hint at a time from GUIDE in friends.js.
@@ -1513,10 +1594,12 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   tick(dt);
   if (G.state !== 'title') { renderHud(); drawScene(); }
+  if (!ui.title.classList.contains('hidden')) drawTitleCrew(now / 1000);
+  if (!ui.result.classList.contains('hidden') && G.result) drawResultCrew(G.result, now / 1000);
   requestAnimationFrame(frame);
 }
 resize(); boot();
 requestAnimationFrame(frame);
 
-window.LOBBY = { G, startEvening, endEvening, Store, boot, shareTextFor, planEvening, unlock, triggerIssue, ACTIONS, runIssueButton, runSig, canRunSig, sigHint, pauseGame, resumeGame, Guide, Music, bestText, step(ms) { tick(ms / 1000); renderHud(); drawScene(); } };
+window.LOBBY = { G, startEvening, endEvening, Store, boot, shareTextFor, planEvening, unlock, triggerIssue, ACTIONS, runIssueButton, shareCanvas, resultEntries, positionMenu, runSig, canRunSig, sigHint, pauseGame, resumeGame, Guide, Music, bestText, step(ms) { tick(ms / 1000); renderHud(); drawScene(); } };
 })();
