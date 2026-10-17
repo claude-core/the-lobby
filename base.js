@@ -52,6 +52,10 @@ const Daily = {
     return Math.floor(s / 3600) + ':' + String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
   },
   debug: new URLSearchParams(location.search).get('day'),
+  // ?night=<scenario id> plays one scenario as debug (never saved)
+  night: new URLSearchParams(location.search).get('night'),
+  // day of the week (0 = Sunday) for a day number, counted from LAUNCH_DATE
+  weekdayOf(dayNum) { const [ly, lm, ld] = this.LAUNCH_DATE.split('-').map(Number); return new Date(Date.UTC(ly, lm - 1, ld + dayNum - 1)).getUTCDay(); },
   todayNumber() { return this.debug ? Math.max(1, parseInt(this.debug, 10) || 1) : this.dayNumber(); },
   seedFor(dayNum, salt) { return (Math.imul(dayNum, 2654435761) + Math.imul((salt || 0) + 1, 40503) + 7919) >>> 0; },
 };

@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&display=swap">
 <!-- Bump ?v= on every release so phones never run stale files. -->
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -77,6 +77,7 @@
       <canvas id="title-crew"></canvas>
       <div class="sub" id="title-day">Evening #1</div>
       <div class="twist" id="title-twist"></div>
+      <div class="chips" id="title-chips"></div>
       <button class="big" id="btn-start" type="button">Start the evening</button>
       <div class="best" id="title-best"></div>
       <div class="fine" id="title-next"></div>
@@ -105,6 +106,8 @@
   <div class="panel loading">
     <div class="load-title">CONNECTING TO PARTY</div>
     <div class="load-bar"><div id="load-fill"></div></div>
+    <div class="load-night" id="load-night"></div>
+    <div class="chips" id="load-chips"></div>
     <div class="tip" id="load-tip"></div>
   </div>
 </div>
@@ -143,6 +146,8 @@
   <div class="panel pause">
     <h1 class="small">PAUSED</h1>
     <div class="sub">The lobby is waiting. Justin is not.</div>
+    <div class="load-night" id="pause-night"></div>
+    <div class="chips" id="pause-chips"></div>
     <button class="big" id="btn-resume" type="button">Resume</button>
     <button class="big alt" id="btn-quit" type="button">Quit evening</button>
     <div class="fine">Quitting counts as a loss.</div>
@@ -151,9 +156,9 @@
 
 <div id="toast" class="hidden"></div>
 
-<script src="base.js?v=11"></script>
-<script src="friends.js?v=11"></script>
-<script src="art.js?v=11"></script>
-<script src="game.js?v=11"></script>
+<script src="base.js?v=12"></script>
+<script src="friends.js?v=12"></script>
+<script src="art.js?v=12"></script>
+<script src="game.js?v=12"></script>
 </body>
 </html>

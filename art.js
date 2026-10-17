@@ -209,6 +209,7 @@ const Art = (() => {
         c.fillRect(b.x + w.x, top + w.y, 4 * sc, 6 * sc);
       }
     }
+    if (o.haze) { c.fillStyle = o.haze; c.fillRect(0, 0, W, H); }
     // the stage floor
     const fg = c.createLinearGradient(0, hz, 0, H); fg.addColorStop(0, '#30366c'); fg.addColorStop(0.3, '#1b1f45'); fg.addColorStop(1, '#0b0e22');
     c.fillStyle = fg; c.fillRect(0, hz, W, H - hz);
@@ -218,6 +219,23 @@ const Art = (() => {
     for (const fx of [0.15, 0.5, 0.85]) {
       const lg = c.createLinearGradient(0, 0, 0, H); lg.addColorStop(0, 'rgba(255,255,255,0.07)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
       c.fillStyle = lg; c.beginPath(); c.moveTo(W * fx - 6, 0); c.lineTo(W * fx + 6, 0); c.lineTo(W * fx + W * 0.12, H); c.lineTo(W * fx - W * 0.12, H); c.closePath(); c.fill();
+    }
+  }
+  // Rain streaks and lightning flashes over the stage. vis: { rain, lightning }
+  function weather(c, W, H, t, vis) {
+    if (vis.lightning) {
+      const p = t % 6.5;
+      const a = p < 0.08 ? 0.35 : p > 0.18 && p < 0.24 ? 0.22 : 0;
+      if (a) { c.fillStyle = `rgba(220,230,255,${a})`; c.fillRect(0, 0, W, H); }
+    }
+    if (vis.rain) {
+      c.strokeStyle = 'rgba(170,200,255,0.35)'; c.lineWidth = 1.2; c.beginPath();
+      for (let i = 0; i < 70; i++) {
+        const speed = 380 + (i * 37) % 160, x0 = (i * 97.3) % (W + 60) - 30;
+        const y = ((t * speed + i * 113) % (H + 40)) - 20, x = x0 - (y / H) * 30;
+        c.moveTo(x, y); c.lineTo(x - 4, y + 13);
+      }
+      c.stroke();
     }
   }
   // state: 'off' | 'open' | 'notready' | 'ready' | 'blocker' | 'codered'; o: { t, pulse, focus }
@@ -310,5 +328,5 @@ const Art = (() => {
       '</svg>';
   }
 
-  return { FONT, rr, avatar, head, portrait, background, platform, lineup, shareCard, mapSVG };
+  return { FONT, rr, avatar, head, portrait, background, weather, platform, lineup, shareCard, mapSVG };
 })();

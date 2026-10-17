@@ -23,7 +23,8 @@ const ui = {
   menuSheet: $('menu-sheet'), menuPortrait: $('menu-portrait'),
   stage: $('stage'), canvas: $('chars'), slots: $('slots'), banner: $('banner'), readyCheck: $('ready-check'), readyCount: $('ready-count'),
   menu: $('menu'), menuTitle: $('menu-title'), menuSub: $('menu-sub'), menuActions: $('menu-actions'), menuResult: $('menu-result'), menuClose: $('menu-close'),
-  title: $('screen-title'), titleDay: $('title-day'), titleTwist: $('title-twist'), titleNext: $('title-next'), start: $('btn-start'), titleBest: $('title-best'),
+  title: $('screen-title'), titleDay: $('title-day'), titleTwist: $('title-twist'), titleChips: $('title-chips'),
+  loadNight: $('load-night'), loadChips: $('load-chips'), pauseNight: $('pause-night'), pauseChips: $('pause-chips'), titleNext: $('title-next'), start: $('btn-start'), titleBest: $('title-best'),
   result: $('screen-result'), resultDay: $('result-day'), resultTitle: $('result-title'), resultTag: $('result-tag'), resultBig: $('result-big'), resultBody: $('result-body'), again: $('btn-again'), resultNext: $('result-next'), resultBest: $('result-best'),
   share: $('btn-share'), stats: $('btn-stats'), statsScreen: $('screen-stats'), statsBody: $('stats-body'), statsClose: $('btn-stats-close'),
   toast: $('toast'), achBody: $('ach-body'), guide: $('guide'),
@@ -50,26 +51,51 @@ const fmtDur = m => { m = Math.round(m); return m >= 60 ? Math.floor(m / 60) + '
 const pick = (rng, arr) => arr && arr.length ? arr[Math.floor(rng.next() * arr.length)] : '';
 const nameVars = f => ({ name: f.name, min: KICK_MINUTES });
 
+// Tonight's scenario: the weekday's pool, picked by the daily seed.
+const forcedNight = () => { const id = (window.LOBBY && window.LOBBY.forceNight) || Daily.night; return id ? SCENARIOS.find(s => s.id === id) || null : null; };
 function planEvening(day) {
   const rng = new Rng(Daily.seedFor(day, 7));
-  const golden = rng.chance(GOLDEN.chance);
-  const twist = golden ? null : rng.pick(TWISTS);
-  const fx = golden ? { patienceMul: GOLDEN.patienceMul, angerMul: GOLDEN.angerMul, outburstMul: GOLDEN.outburstMul, shaunSeconds: GOLDEN.shaunSeconds } : Object.assign({}, twist.effects);
+  const forced = forcedNight();
+  const golden = rng.chance(GOLDEN.chance) && !forced;
+  const weekday = Daily.weekdayOf(day), week = WEEK[weekday];
+  const poolPick = rng.pick(week.pool);
+  const scenario = golden ? null : forced || SCENARIOS.find(s => s.id === poolPick);
+  const mutators = golden ? GOLDEN.mutators : scenario.mutators;
+  const odds = id => { const m = mutators.find(x => x.type === 'event' && x.event === id); return m ? m.chance : EVENTS[id].chance; };
   return {
-    day, golden, twist, fx,
-    maintenanceAt: rng.chance(EVENTS.maintenance.chance) ? rng.range(EVENTS.maintenance.window[0], EVENTS.maintenance.window[1]) : null,
-    crash: rng.chance(EVENTS.crash.chance), crashed: false, maintained: false,
+    day, golden, scenario, week, weekday, mutators,
+    title: golden ? GOLDEN.text : scenario.title, chips: golden ? GOLDEN.chips : scenario.chips,
+    maintenanceAt: rng.chance(odds('maintenance')) ? rng.range(EVENTS.maintenance.window[0], EVENTS.maintenance.window[1]) : null,
+    crash: rng.chance(odds('crash')), crashed: false, maintained: false,
     matchMinutes: rng.int(4, 9),
-    chatbugAt: rng.chance(EVENTS.chatbug.chance) && !golden ? rng.range(EVENTS.chatbug.window[0], EVENTS.chatbug.window[1]) : null,
-    doublexpAt: rng.chance(EVENTS.doublexp.chance) ? rng.range(EVENTS.doublexp.window[0], EVENTS.doublexp.window[1]) : null,
+    chatbugAt: rng.chance(odds('chatbug')) ? rng.range(EVENTS.chatbug.window[0], EVENTS.chatbug.window[1]) : null,
+    doublexpAt: rng.chance(odds('doublexp')) ? rng.range(EVENTS.doublexp.window[0], EVENTS.doublexp.window[1]) : null,
     chatbugged: false, doublexped: false,
   };
 }
+// ---------------------------------------------------------------------------
+// Mutators: tonight's numbers, from the scenario in friends.js
+// ---------------------------------------------------------------------------
+const MUTS = () => (G.evening && G.evening.mutators) || [];
+function condHolds(s) {
+  const i = s.indexOf(':'), k = s.slice(0, i), v = s.slice(i + 1);
+  if (k === 'clock') return G.clock >= +v;
+  if (k === 'caught') return !!(G.friends[v] && G.friends[v].wasCaught);
+  if (k === 'together') return v.split(',').every(id => G.friends[id] && G.friends[id].inLobby);
+  return false;
+}
+const mutActive = m => !(m.from && !condHolds(m.from)) && !(m.until && condHolds(m.until)) && !(m.while && !condHolds(m.while));
+const mutFor = (m, f) => !m.friend || m.friend === 'all' || (f && m.friend === f.id);
+// product of every active mutator of this type that applies to this friend
+function mult(type, f) { let k = 1; for (const m of MUTS()) if (m.type === type && mutFor(m, f) && mutActive(m)) k *= m.mul; return k; }
 function fxOnline(id, w) {
-  const fx = G.evening.fx;
-  if (G.evening.golden) return [0, 0];
-  if (fx.online && fx.online.friend === id) return fx.online.window;
-  return w;
+  const def = FRIENDS[id]; if (def.stranger || def.neverLeaves) return w;
+  let win = w, shift = 0;
+  for (const m of MUTS()) {
+    if (m.type === 'online' && (m.friend === id || m.friend === 'all')) win = m.window;
+    if (m.type === 'onlineShift' && mutFor(m, { id })) shift += m.minutes;
+  }
+  return [Math.max(0, win[0] + shift), Math.max(0, win[1] + shift)];
 }
 function makeFriend(id) {
   const def = FRIENDS[id];
@@ -77,7 +103,7 @@ function makeFriend(id) {
   return {
     id, def, name: def.name,
     online: false, onlineAt: G.rng.range(w[0], w[1]),
-    inLobby: false, ready: false, readyT: 0, invitePending: 0, reinviteT: 0, annoyed: 0,
+    inLobby: false, ready: false, readyT: 0, invitePending: 0, reinviteT: 0, annoyed: MUTS().filter(m => m.type === 'annoyed' && m.friend === id).reduce((a, m) => a + m.n, 0),
     patience: def.patience ? def.patience.max : 0, anger: 0, screaming: 0,
     cd: { ping: 0, text: 0, call: 0, calm: 0 }, buffs: {}, usedActions: {}, pending: [], backfire: null, chatterT: G.rng.range(30, 60), talkT: 0, phase: G.rng.next() * 6.28, blink: 0,
     status: 'Offline', joinedAt: 0, leaves: 0,
@@ -85,18 +111,20 @@ function makeFriend(id) {
     outburstT: def.outburst ? G.rng.range(def.outburst.every[0], def.outburst.every[1]) : 0, ignoredT: 0,
     issue: null, afk: false, broken: false, readyMul: 1, deadlineAt: null, gone: false, goneStatus: '', disconnected: false, dcT: 0,
     sneaking: false, sneakFrom: 0, sneakDef: null, late: null, schedule: [], issuesHad: 0, afkRantT: 0, wanderT: 0, wanderBack: 0, sojuT: 0, voteT: 0,
-    shaun: def.codeRed ? { windowT: (() => { const ws = G.evening.fx.shaunSeconds || def.windowSeconds; return G.rng.range(ws[0], ws[1]); })(), appeared: false, left: false, daysAway: G.rng.int(def.daysAway[0], def.daysAway[1]), stayed: 0, appearedAt: 0 } : null,
+    shaun: def.codeRed ? { windowT: (() => { const sm = MUTS().find(m => m.type === 'shaun'); const ws = sm ? sm.seconds : def.windowSeconds; return G.rng.range(ws[0], ws[1]); })(), appeared: false, left: false, daysAway: G.rng.int(def.daysAway[0], def.daysAway[1]), stayed: 0, appearedAt: 0 } : null,
   };
 }
 
 function startEvening(mode) {
-  G.mode = Daily.debug ? 'debug' : 'play';
+  G.mode = Daily.debug || forcedNight() ? 'debug' : 'play';
   G.day = Daily.todayNumber();
   G.rng = new Rng(Daily.seedFor(G.day, 0));
   G.evening = planEvening(G.day); G.serverDown = 0;
   G.t = 0; G.clock = 0; G.vibe = 100; G.winT = 0; G.shake = 0; G.matchT = 0; G.matchLine = 0; G.result = null; G.rcCooldown = 0;
   G.subs = []; ui.notes.innerHTML = ''; G.slotFx = []; G.cdShown = 0; ui.splash.classList.add('hidden'); G.log = { leaves: 0, screams: 0, kicks: 0, calls: 0, outbursts: 0, unreadies: 0, lines: {}, issues: {}, afk: {}, trail: {}, caught: false, withShaun: false, crashed: false };
-  G.chem = {}; G.chemActive = []; G.chatBug = 0; G.doubleXp = 0; G.rcHighlight = 0;
+  G.chem = {}; G.chemActive = [];
+  const tonightChem = MUTS().filter(m => m.type === 'chemistry');
+  G.chemList = CHEMISTRY.filter(c => !tonightChem.some(t => t.pair.every(id => c.pair.includes(id)))).concat(tonightChem); G.chatBug = 0; G.doubleXp = 0; G.rcHighlight = 0;
   G.friends = {}; for (const id of ROSTER) G.friends[id] = makeFriend(id);
   for (const id of ROSTER) scheduleIssues(G.friends[id]);
   G.vote = null;
@@ -109,7 +137,10 @@ function startEvening(mode) {
   ui.title.classList.add('hidden'); ui.result.classList.add('hidden'); ui.statsScreen.classList.add('hidden'); ui.app.classList.remove('hidden');
   notice('Party created · need ' + needed() + ' ready');
   if (G.evening.golden) { banner('✨ GOLDEN EVENING ✨', 'good', 3.5); spawnConfetti(80, ['#ffd23f', '#ffe066', '#fff3b0', '#ffb800']); notice(GOLDEN.notice); }
-  else if (G.evening.twist) notice('Tonight: ' + G.evening.twist.text);
+  else notice(G.evening.week.emoji + ' Tonight: ' + G.evening.title);
+  G.evening.chips.forEach((c, i) => setTimeout(() => { if (G.state === 'playing' && G.clock < 30) notice(c); }, 900 * (i + 1)));
+  for (const id of ROSTER) { const f = G.friends[id]; if (f.inLobby) sayTonight(f); }
+  ui.modeSub.textContent = (G.evening.week.day + ' · ' + G.evening.week.theme).toUpperCase();
   if (ui.modeTag) { ui.modeTag.textContent = G.mode === 'debug' ? 'DEBUG · EVENING #' + G.day : ''; ui.modeTag.classList.toggle('hidden', G.mode !== 'debug'); }
   buildSlots(); buildList(); resize();
   Guide.init(); Music.start();
@@ -188,8 +219,14 @@ function joinLobby(f, quiet) {
   const r = f.def.readyTime; f.readyT = G.rng.range(r[0], r[1]) * (1 + 0.3 * f.annoyed);
   if (f.def.patience) f.patience = f.def.patience.max * (1 - 0.15 * f.annoyed);
   f.status = 'In lobby';
-  if (!quiet) { say(f, pick(G.rng, f.def.lines.join)); Sfx.tone(520, 0.1, 'triangle', 0.15, 780); G.vibe = clamp(G.vibe + 4, 0, 100); }
+  if (!quiet) { if (!sayTonight(f)) say(f, pick(G.rng, f.def.lines.join)); Sfx.tone(520, 0.1, 'triangle', 0.15, 780); G.vibe = clamp(G.vibe + 4, 0, 100); }
   return true;
+}
+// A friend's scenario line, the first time he's in the lobby tonight.
+function sayTonight(f) {
+  const sc = G.evening && G.evening.scenario, l = sc && sc.lines && sc.lines[f.id];
+  if (!l || f.saidTonight) return false;
+  f.saidTonight = true; say(f, pick(G.rng, l)); return true;
 }
 function leaveLobby(f, reason) {
   const s = G.lobby.indexOf(f.id); if (s >= 0) { G.lobby[s] = null; exitFx(s, f, reason === 'kicked' ? 'kick' : 'glitch'); }
@@ -226,7 +263,7 @@ function setReady(f, on, quiet) {
   if (f.ready === on) return;
   f.ready = on; f.waitT = 0; f.complainT = 0;
   if (on && G.ach && f.id === 'parker' && G.ach.parkerReadyAt === null) G.ach.parkerReadyAt = G.clock;
-  if (on) { const h = f.def.readyHold || [20, 30]; f.readyHold = G.rng.range(h[0], h[1]) * (1 - 0.2 * f.annoyed);
+  if (on) { const h = f.def.readyHold || [20, 30]; f.readyHold = G.rng.range(h[0], h[1]) * (1 - 0.2 * f.annoyed) * mult('hold', f);
     const closeN = lobbyMembers().filter(m => m.ready).length;
     f.falseReady = G.rng.chance((0.14 + 0.1 * f.def.chaos) * (closeN >= 3 ? 0.5 : 1)) ? G.rng.range(2, 6) : 0; const recent = G.t - (f.lastReadyLine || -99) < 25; if (!quiet && !recent) { say(f, pick(G.rng, f.def.lines.ready)); f.lastReadyLine = G.t; } G.vibe = clamp(G.vibe + 10, 0, 100); Sfx.tone(990, 0.1, 'sine', 0.15, 1480); }
   else {
@@ -346,7 +383,7 @@ function tick(dt) {
     if (!f.issue) { const next = f.schedule.find(s => !s.done && s.at <= G.clock); if (next) { if (triggerIssue(f, next.def, next.minutes)) next.done = true; else next.at = G.clock + 4; } }
     if (f.issue) { tickIssue(f, dt); if (!f.inLobby) continue; }
     // readying up, and getting antsy once ready
-    if (!f.ready) { if (!f.afk && !f.broken) { f.readyT -= dt / (hasBuff(f, 'sober') ? 1 : (f.readyMul || 1)); if (f.readyT <= 0) setReady(f, true); } }
+    if (!f.ready) { if (!f.afk && !f.broken) { f.readyT -= dt / ((hasBuff(f, 'sober') ? 1 : (f.readyMul || 1)) * mult('readySpeed', f)); if (f.readyT <= 0) setReady(f, true); } }
     else if (f.falseReady > 0) { f.falseReady -= dt; if (f.falseReady <= 0) { giveUp(f); continue; } }
     else if (anyNotReady || members.length < needed()) {
       const readyN = members.filter(m => m.ready).length;
@@ -367,11 +404,11 @@ function tick(dt) {
     // Andre-style outbursts that must be acknowledged
     if (f.def.outburst) {
       if (f.ignoredT > 0) { f.ignoredT -= dt; if (f.ignoredT <= 0) { ignoredOutburst(f); f.outburstT = G.rng.range(f.def.outburst.every[0], f.def.outburst.every[1]); } }
-      else { f.outburstT -= dt / (G.evening.fx.outburstMul || 1); if (f.outburstT <= 0) outburst(f); }
+      else { f.outburstT -= dt / mult('outburst', f); if (f.outburstT <= 0) outburst(f); }
     }
     // patience (paused while away)
     if (f.def.patience && !f.afk) {
-      let drain = f.def.patience.drain * (f.ready ? 1.3 : 0.8) * (G.evening.fx.patienceMul || 1) * chemMul(f, 'drainMul') * buffVal(f, 'drainMul') * (G.doubleXp > 0 ? EVENTS.doublexp.patienceMul : 1);
+      let drain = f.def.patience.drain * (f.ready ? 1.3 : 0.8) * mult('patience', f) * chemMul(f, 'drainMul') * buffVal(f, 'drainMul') * (G.doubleXp > 0 ? EVENTS.doublexp.patienceMul : 1);
       if (members.length < needed()) drain *= 1.25;                     // waiting on invites
       if (screamer && screamer !== f && !hasBuff(screamer, 'screamHarmless') && !hasBuff(f, 'yellProof')) drain += 3 * ((f.def.sensitive && f.def.sensitive.scream) || 1);
       f.patience -= drain * dt;
@@ -384,7 +421,7 @@ function tick(dt) {
         f.screaming -= dt; if (!hasBuff(f, 'screamHarmless')) { G.vibe -= 2.5 * dt; G.shake = Math.max(G.shake, 0.3); }
         if (f.screaming <= 0) { f.anger = a.max * 0.35; react(f, f.def.lines.afterScream, ''); }
       } else {
-        let rise = a.rise * (anyNotReady ? 1 : 0.25) * (G.evening.fx.angerMul || 1) * chemMul(f, 'angerMul') * buffVal(f, 'angerRiseMul');
+        let rise = a.rise * (anyNotReady ? 1 : 0.25) * mult('anger', f) * chemMul(f, 'angerMul') * buffVal(f, 'angerRiseMul');
         if (members.length < needed()) rise *= 1.2;
         const afkLong = members.find(m => m.afk && m.issue && m.issue.t > gm2s(10));
         if (afkLong) { rise += a.afkRise || 1; f.afkRantT -= dt; if (f.afkRantT <= 0) { f.afkRantT = 9; say(f, tpl(pick(G.rng, f.def.lines.afkRant), { name: afkLong.name.toUpperCase(), min: Math.round(s2gm(afkLong.issue.t)) }), 'scream'); } }
@@ -403,7 +440,7 @@ function tick(dt) {
   if (members.some(m => m.mood === 'annoyed')) drain += 0.5;
   if (!members.length) drain += 0.4;
   drain *= Math.max(0.3, 1 - 0.14 * members.filter(m => m.ready).length);   // a mostly-ready lobby keeps its own vibe up
-  G.vibe -= drain * dt;
+  G.vibe -= drain * mult('vibeDrain') * dt;
   for (const c of G.chemActive) if (c.vibe) G.vibe = Math.min(100, G.vibe + c.vibe * dt);
   if (G.vibe <= 0) { G.vibe = 0; return endEvening('vibe'); }
 
@@ -447,7 +484,7 @@ function tickEvents(dt) {
 // Chemistry: pairs from friends.js that help or hurt while both are in the lobby.
 // ---------------------------------------------------------------------------
 function updateChemistry() {
-  G.chemActive = CHEMISTRY.filter(c => c.pair.every(id => G.friends[id] && G.friends[id].inLobby));
+  G.chemActive = G.chemList.filter(c => c.pair.every(id => G.friends[id] && G.friends[id].inLobby));
   for (const c of G.chemActive) {
     const k = c.pair.join('+'); if (G.chem[k]) continue;
     G.chem[k] = true; notice(c.notice);
@@ -497,7 +534,7 @@ function endEvening(kind) {
   G.result = {
     kind, day: G.day, mode: G.mode, lobbyMinutes: Math.round(kind === 'win' ? G.lobbyMinutes : G.clock), matchMinutes: matchMin,
     screams: G.log.screams, leaves: G.log.leaves, kicks: G.log.kicks, outbursts: G.log.outbursts, unreadies: G.log.unreadies, caught: G.log.caught, crashed: G.log.crashed,
-    parkerAfk: G.log.afk.parker || 0, issues: G.log.issues, lines: G.log.lines, golden: G.evening.golden, twist: G.evening.twist ? G.evening.twist.text : '',
+    parkerAfk: G.log.afk.parker || 0, issues: G.log.issues, lines: G.log.lines, golden: G.evening.golden, twist: G.evening.title, nightId: G.evening.golden ? 'golden' : G.evening.scenario.id, weekday: G.evening.week.day, weekEmoji: G.evening.week.emoji,
     shaun: sh ? { appeared: sh.shaun.appeared, stayedMin: Math.round(s2gm(sh.shaun.stayed)), withMatch: G.log.withShaun } : null,
     trail: G.log.trail,
   };
@@ -506,7 +543,14 @@ function endEvening(kind) {
   checkEndAchievements(G.result);
   if (G.mode !== 'debug') {
     applyStats(Store.stats, G.result, G.day); Store.data.runs = (Store.data.runs || 0) + 1;
-    G.result.newBest = recordTonight(G.result); Store.data.guideDone = true; Store.save();
+    G.result.newBest = recordTonight(G.result); Store.data.guideDone = true;
+    if (kind === 'win' && G.evening.scenario) {   // collect the nights you've won
+      const won = Store.data.nights = Store.data.nights || {};
+      G.result.newNight = !won[G.evening.scenario.id];
+      won[G.evening.scenario.id] = (won[G.evening.scenario.id] || 0) + 1;
+      if (G.result.newNight) setTimeout(() => toast('🌙 New night won: ' + G.evening.scenario.title, 'ach', 3200), 3400);
+    }
+    Store.save();
   }
   setTimeout(() => showResult(G.result, G.mode), kind === 'win' ? 800 : kind === 'quit' ? 600 : 2200);
 }
@@ -595,7 +639,8 @@ function showResult(r, mode) {
   const talk = Object.entries(r.lines || {}).sort((a, b) => b[1] - a[1])[0];
   if (talk) rows.push([L.talk, `${FRIENDS[talk[0]].name} (${talk[1]} lines)`]);
   if (r.golden) rows.push([L.golden, 'yes']);
-  else if (r.twist) rows.push([L.twist, r.twist]);
+  else if (r.twist) rows.push([L.twist, (r.weekEmoji ? r.weekEmoji + ' ' : '') + r.twist]);
+  if (r.newNight) rows.push(['🌙 New night won', 'yes']);
   ui.resultBody.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><span>${v}</span></div>`).join('');
   ui.share.classList.toggle('hidden', debug);
   ui.resultBest.textContent = bestText(r.day, r.newBest);
@@ -621,6 +666,7 @@ function shareTextFor(r) {
 }
 function shareHead(r) {
   const T = tpl, lines = [];
+  if (r.weekday && !r.golden) lines.push(r.weekEmoji + ' ' + r.weekday + ': ' + r.twist);
   if (r.kind === 'win') lines.push(T(SHARE.win, { lobby: fmtDur(r.lobbyMinutes), match: fmtDur(r.matchMinutes) }));
   else { lines.push(r.kind === 'vibe' ? SHARE.loseVibe : r.kind === 'quit' ? SHARE.loseQuit : SHARE.loseTime); lines.push(T(SHARE.lobbyOnly, { lobby: fmtDur(r.lobbyMinutes) })); }
   if (r.shaun) lines.push(r.shaun.withMatch ? SHARE.shaunMatch : r.shaun.appeared ? T(SHARE.shaunLeft, { min: fmtDur(Math.max(1, r.shaun.stayedMin)) }) : SHARE.shaunNever);
@@ -650,7 +696,11 @@ function showStats() {
   const rows = [[L.evenings, s.evenings], [L.matches, s.matches], [L.rate, rate + '%'], [L.longest, fmtDur(s.longestLobby)],
     [L.shaunMatches, s.shaunMatches], [L.shaunLongest, fmtDur(s.shaunLongest)], [L.parkerAfk, s.parkerAfk], [L.andreOutbursts, s.andreOutbursts],
     [L.streak, s.streak], [L.bestStreak, s.bestStreak]];
-  ui.statsBody.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join('');
+  const won = Store.data.nights || {};
+  ui.statsBody.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join('') +
+    `<div class="nights-title">NIGHTS WON ${Object.keys(won).length}/${SCENARIOS.length}</div>` +
+    [1, 2, 3, 4, 5, 6, 0].map(i => WEEK[i]).map(w => `<div class="night-day">${w.emoji} ${w.day} · ${esc(w.theme)}</div>` +
+      w.pool.map(id => { const sc = SCENARIOS.find(x => x.id === id); return `<div class="night ${won[id] ? 'on' : ''}">${esc(sc.title)}${won[id] > 1 ? ' ×' + won[id] : ''}</div>`; }).join('')).join('');
   const got = Store.data.achievements || {};
   const n = Object.keys(got).length;
   ui.achBody.innerHTML = `<div id="ach-title">ACHIEVEMENTS ${n}/${ACHIEVEMENTS.length}</div>` + ACHIEVEMENTS.map(a => `<div class="ach ${got[a.id] ? 'on' : ''}">${a.title}</div>`).join('');
@@ -676,20 +726,38 @@ function weightedPick(rng, arr) {
 // issues (late, sneak) apply right away; lobby issues wait for their time
 // and for the friend to actually be in the lobby.
 function scheduleIssues(f) {
-  const fx = G.evening.fx;
-  const defs = (f.def.issues || []).filter(d => !(fx.skip && fx.skip.friend === f.id && fx.skip.issue === d.id)).filter(d => !(G.evening.golden && (d.type === 'sneak' || d.type === 'late'))); if (!defs.length) return;
-  const rng = G.rng;
-  let pool = defs.map(d => (fx.weight && fx.weight.friend === f.id && fx.weight.issue === d.id) ? Object.assign({}, d, { weight: (d.weight || 1) * fx.weight.mul }) : d);
+  const M = MUTS(), rng = G.rng;
+  const skipped = d => M.some(m => m.type === 'skip' && ((m.friend === f.id && m.issue === d.id) || (m.issueType && m.issueType === d.type)));
+  // tonight's version of each issue: weights and numbers bent by the scenario
+  const tuned = d => {
+    let x = d;
+    for (const m of M) if (m.friend === f.id && m.issue === d.id) {
+      if (m.type === 'issueParam') x = Object.assign({}, x, m.set);
+      if (m.type === 'weight') x = Object.assign({}, x, { weight: (x.weight || 1) * m.mul });
+    }
+    return x;
+  };
+  const defs = (f.def.issues || []).filter(d => !skipped(d)).map(tuned); if (!defs.length) return;
+  const forced = M.filter(m => m.type === 'force' && m.friend === f.id).map(m => ({ m, def: defs.find(d => d.id === m.issue) })).filter(x => x.def);
+  let pool = defs.filter(d => !forced.some(x => x.def.id === d.id));
   const chosen = [];
-  const sneak = pool.find(d => d.type === 'sneak');
-  if (sneak) { pool = pool.filter(d => d !== sneak); if (rng.chance(fx.sneakChance !== undefined ? fx.sneakChance : (f.def.sneakChance || 0))) chosen.push(sneak); }
-  const n = f.def.issuesPerEvening ? rng.int(f.def.issuesPerEvening[0], f.def.issuesPerEvening[1]) : 1;
+  const sneak = pool.find(d => d.type === 'sneak'), sm = M.find(m => m.type === 'sneak');
+  if (sneak) { pool = pool.filter(d => d !== sneak); if (rng.chance(sm && sm.chance !== undefined ? sm.chance : (f.def.sneakChance || 0))) chosen.push(sneak); }
+  let n = f.def.issuesPerEvening ? rng.int(f.def.issuesPerEvening[0], f.def.issuesPerEvening[1]) : 1;
+  for (const m of M) if (m.type === 'extraIssues' && m.friend === f.id) n += m.n;
+  n = Math.max(0, n - forced.length);
   for (let i = 0; i < n && pool.length; i++) { const d = weightedPick(rng, pool); chosen.push(d); pool = pool.filter(x => x !== d); }
+  // guaranteed issues land at their time (they wait until he's in the lobby)
+  for (const { m, def } of forced) {
+    if (def.type === 'late' || def.type === 'sneak' || def.atJoin) { chosen.push(def); continue; }
+    const at = Array.isArray(m.at) ? rng.range(m.at[0], m.at[1]) : (m.at !== undefined ? m.at : f.onlineAt + 10);
+    f.schedule.push({ def, at, minutes: def.minutes ? rng.range(def.minutes[0], def.minutes[1]) : 0 });
+  }
   let nextAt = f.onlineAt + rng.range(6, 14);
   for (const def of chosen) {
     const minutes = def.minutes ? rng.range(def.minutes[0], def.minutes[1]) : 0;
     if (def.type === 'late') { f.late = { def, used: {} }; f.onlineAt += minutes; continue; }
-    if (def.type === 'sneak') { f.sneaking = true; f.sneakFrom = f.onlineAt; f.onlineAt += minutes; f.sneakDef = def; continue; }
+    if (def.type === 'sneak') { f.sneaking = true; f.sneakFrom = f.onlineAt; f.onlineAt += minutes; f.sneakDef = sm && sm.suspicionMinutes !== undefined ? Object.assign({}, def, { suspicionMinutes: sm.suspicionMinutes }) : def; continue; }
     if (def.atJoin) { f.schedule.push({ def, at: 0, minutes }); continue; }
     f.schedule.push({ def, at: Math.min(205, nextAt), minutes });
     nextAt += rng.range(18, 40);
@@ -837,7 +905,7 @@ function runLateButton(f, b) {
   return b.result || 'Done.';
 }
 function catchSneak(f) {
-  f.sneaking = false; setOnline(f, true);
+  f.sneaking = false; f.wasCaught = true; setOnline(f, true);
   notice('You caught ' + f.name + ' in another party.');
   G.log.caught = true; unlock('caught'); trail(f, SHARE.trail.caught);
   if (!joinLobby(f, true)) f.status = 'Online';
@@ -848,6 +916,10 @@ function catchSneak(f) {
     say(m, m.def.lines.caughtSneak, 'scream'); G.shake = Math.max(G.shake, 0.4);
   }
   G.vibe = clamp(G.vibe - 4, 0, 100);
+  for (const m of MUTS()) if (m.type === 'onCatch') {
+    if (m.vibe) G.vibe = clamp(G.vibe + m.vibe, 0, 100);
+    if (m.patience) for (const o of lobbyMembers()) if (o.def.patience) o.patience = clamp(o.patience + m.patience, 0, o.def.patience.max);
+  }
   Sfx.tone(300, 0.2, 'sawtooth', 0.15, 150);
 }
 
@@ -1130,7 +1202,7 @@ function updateMenu() {
   if (f.def.patience && f.inLobby) bits.push('patience ' + Math.round(f.patience) + '%');
   if (f.def.anger) bits.push('anger ' + Math.round(f.anger) + '%');
   if (f.annoyed) bits.push('annoyed ×' + f.annoyed);
-  for (const c of CHEMISTRY) if (c.pair.includes(f.id)) { const o = FRIENDS[c.pair.find(x => x !== f.id)]; bits.push((c.kind === 'clash' ? '⚡ ' : '💚 ') + o.name); }
+  for (const c of G.chemList || CHEMISTRY) if (c.pair.includes(f.id)) { const o = FRIENDS[c.pair.find(x => x !== f.id)]; bits.push((c.kind === 'clash' ? '⚡ ' : '💚 ') + o.name); }
   const sub = bits.join(' · ');
   if (ui.menuSub.textContent !== sub) ui.menuSub.textContent = sub;
   for (const mb of menuButtons) {
@@ -1342,8 +1414,9 @@ function exitFx(slot, f, kind) { if (G.slotFx) G.slotFx[slot] = { id: f.id, kind
 function drawScene() {
   if (G.state === 'title' || !G.lobby.length) return;
   const match = G.state === 'match' || (G.state === 'over' && G.result && G.result.kind === 'win');
+  const vis = (G.evening && G.evening.scenario && G.evening.scenario.visual) || null;
   const key = CW + 'x' + CH + '|' + Math.floor(G.clock) + '|' + match;
-  if (key !== bgKey) { bgKey = key; bgx.setTransform(dpr, 0, 0, dpr, 0, 0); bgx.clearRect(0, 0, CW, CH); Art.background(bgx, CW, CH, { clock: G.clock, horizon: GEO.horizon, match }); }
+  if (key !== bgKey) { bgKey = key; bgx.setTransform(dpr, 0, 0, dpr, 0, 0); bgx.clearRect(0, 0, CW, CH); Art.background(bgx, CW, CH, { clock: G.clock, horizon: GEO.horizon, match, haze: vis && vis.haze }); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, CW, CH);
   updateConfetti();
@@ -1362,6 +1435,7 @@ function drawScene() {
       Art.avatar(ctx, fr.def.look, cx, baseY, s, fx.kind === 'kick' ? { t: G.t, phase: fr.phase, kick: k } : { t: G.t, phase: fr.phase, glitch: k });
     }
   }
+  if (vis && (vis.rain || vis.lightning)) Art.weather(ctx, CW, CH, G.t, vis);
   drawConfetti();
 }
 function updateConfetti() {
@@ -1432,8 +1506,9 @@ function boot() {
   hideScreens();
   G.state = 'title';
   const plan = planEvening(n);
-  ui.titleDay.textContent = 'Evening #' + n + (Daily.debug ? ' · debug' : '');
-  ui.titleTwist.textContent = plan.golden ? GOLDEN.text : 'Tonight: ' + plan.twist.text;
+  ui.titleDay.textContent = 'Evening #' + n + ' · ' + plan.week.emoji + ' ' + plan.week.day + ' · ' + plan.week.theme + (Daily.debug || forcedNight() ? ' · debug' : '');
+  ui.titleTwist.textContent = plan.golden ? GOLDEN.text : 'Tonight: ' + plan.title;
+  ui.titleChips.innerHTML = chipsHTML(plan.chips);
   ui.titleTwist.classList.toggle('golden', plan.golden);
   ui.titleBest.textContent = bestText(n);
   ui.modeName.textContent = LOBBY_ART.mode; ui.modeSub.textContent = LOBBY_ART.modeSub;
@@ -1444,7 +1519,7 @@ function boot() {
   refreshCountdowns();
 }
 function refreshCountdowns() {
-  if (Daily.debug) { ui.titleNext.textContent = 'Debug evening — results are not saved'; ui.resultNext.textContent = 'Debug evening — not saved'; return; }
+  if (Daily.debug || forcedNight()) { ui.titleNext.textContent = 'Debug evening — results are not saved'; ui.resultNext.textContent = 'Debug evening — not saved'; return; }
   const t = 'Same evening for everyone today · next one in ' + Daily.countdownText();
   ui.titleNext.textContent = t;
   ui.resultNext.textContent = t;
@@ -1458,9 +1533,13 @@ let toastT2 = null;
 function randomTip() { return TIPS[Math.floor(Math.random() * TIPS.length)]; }
 function rotateTitleTip() { if (G.state === 'title') ui.titleTip.textContent = randomTip(); }
 setInterval(rotateTitleTip, 6000);
+const chipsHTML = chips => (chips || []).map(c => `<span class="chip">${esc(c)}</span>`).join('');
+function showNight(plan, titleEl, chipsEl) { titleEl.textContent = plan.golden ? plan.title : plan.week.emoji + ' Tonight: ' + plan.title; chipsEl.innerHTML = chipsHTML(plan.chips); }
 function loadThen(fn) {
   hideScreens(); ui.loading.classList.remove('hidden');
-  ui.loadTip.textContent = randomTip(); ui.loadFill.style.width = '0%';
+  const plan = planEvening(Daily.todayNumber());
+  showNight(plan, ui.loadNight, ui.loadChips);
+  ui.loadTip.textContent = (plan.scenario && plan.scenario.tip) || randomTip(); ui.loadFill.style.width = '0%';
   const t0 = performance.now(), dur = 1400;
   Sfx.tone(440, 0.08, 'triangle', 0.1); Sfx.tone(660, 0.08, 'triangle', 0.1, 0, 0.5); Sfx.tone(880, 0.1, 'triangle', 0.12, 0, 1.0);
   const step = () => { const k = Math.min(1, (performance.now() - t0) / dur); ui.loadFill.style.width = Math.round(k * 100) + '%'; if (k < 1) requestAnimationFrame(step); else { ui.loading.classList.add('hidden'); fn(); } };
@@ -1479,6 +1558,7 @@ ui.statsClose.addEventListener('click', e => { e.preventDefault(); ui.statsScree
 function pauseGame() {
   if (G.state !== 'playing') return;
   G.state = 'paused'; closeMenu(); Music.stop();
+  showNight(G.evening, ui.pauseNight, ui.pauseChips);
   ui.pauseScreen.classList.remove('hidden');
 }
 function resumeGame() {
@@ -1601,5 +1681,5 @@ function frame(now) {
 resize(); boot();
 requestAnimationFrame(frame);
 
-window.LOBBY = { G, startEvening, endEvening, Store, boot, shareTextFor, planEvening, unlock, triggerIssue, ACTIONS, runIssueButton, shareCanvas, resultEntries, positionMenu, runSig, canRunSig, sigHint, pauseGame, resumeGame, Guide, Music, bestText, step(ms) { tick(ms / 1000); renderHud(); drawScene(); } };
+window.LOBBY = { G, startEvening, endEvening, Store, boot, shareTextFor, planEvening, unlock, triggerIssue, ACTIONS, runIssueButton, shareCanvas, resultEntries, positionMenu, planEvening, mult, runSig, canRunSig, sigHint, pauseGame, resumeGame, Guide, Music, bestText, step(ms) { tick(ms / 1000); renderHud(); drawScene(); } };
 })();

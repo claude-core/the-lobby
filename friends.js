@@ -477,7 +477,7 @@ const RESULT_LABELS = {
   shaunPopped: 'popped in and left', shaunNever: 'never showed',
   parker: '🚽 Parker AFK', andre: '📢 Andre: "LISTEN TO ME"', justin: '😤 Justin screamed', unreadies: '🔴 People un-readied',
   leaves: '🚪 Left the party', kicks: '🦶 Kicks', caught: '🕵️ Caught Nicky C', crashed: '💥 Crashed on ready',
-  talk: '🎙️ Most talkative', golden: '✨ Golden Evening', twist: '🎲 Twist',
+  talk: '🎙️ Most talkative', golden: '✨ Golden Evening', twist: '📅 Tonight',
 };
 const STATS_LABELS = {
   evenings: 'Evenings played', matches: 'Matches started', rate: 'Win rate', longest: 'Longest lobby',
@@ -502,38 +502,331 @@ const ACTION_TEXT = {
 };
 
 // ---------------------------------------------------------------------------
-// Evenings: daily twists, the Golden Evening, and random events.
-// Twist effects the engine understands:
-//   online:      { friend, window }      override a friend's online window (minutes after 9pm)
-//   skip:        { friend, issue }       that issue can't happen tonight
-//   weight:      { friend, issue, mul }  make an issue more/less likely
-//   angerMul, patienceMul                scale Justin's anger rise / everyone's patience drain
-//   shaunSeconds: [a, b]                 Shaun's online window in real seconds
-//   sneakChance: 0..1                    Nicky C sneaking chance
+// The week. Each weekday has a theme and a pool of scenarios; the daily seed
+// picks one from that day's pool, so everyone plays the same night that day.
+// Scenarios only bend numbers. They never add or remove rules.
+//
+// Scenario fields: id, title, chips (what the player is told), tip,
+// lines ({ friend: [first join line tonight] }), visual ({ rain, lightning,
+// haze: css color }), mutators.
+//
+// Mutators the engine understands:
+//   { type: 'patience', mul, friend? }          patience drain (one friend, or everyone)
+//   { type: 'anger', mul }                       Justin's anger rise
+//   { type: 'outburst', mul }                    time between Andre's outbursts (0.7 = more often)
+//   { type: 'readySpeed', mul, friend? }         time to ready up (1.5 = slower)
+//   { type: 'hold', mul, friend? }               how long people stay ready (1.3 = longer)
+//   { type: 'vibeDrain', mul }                   how fast the Party Vibe sinks
+//   { type: 'online', friend, window }           when he comes online (minutes after 9pm); friend 'all' for everyone
+//   { type: 'onlineShift', minutes, friend? }    comes online this much later (negative = earlier)
+//   { type: 'shaun', seconds: [a, b] }           how long Shaun waits for an invite
+//   { type: 'weight', friend, issue, mul }       how likely one of his issues is
+//   { type: 'skip', friend, issue } or { type: 'skip', issueType }   can't happen tonight
+//   { type: 'force', friend, issue, at: [a, b] } guaranteed tonight, around that time (minutes after 9pm)
+//   { type: 'issueParam', friend, issue, set }   that issue's numbers tonight (minutes, seconds, readyMul)
+//   { type: 'extraIssues', friend, n }           n more issues than usual
+//   { type: 'sneak', chance, suspicionMinutes }  sneaking odds, and how long his "Offline" looks innocent
+//   { type: 'event', event, chance }             odds of maintenance, crash, chatbug or doublexp
+//   { type: 'chemistry', pair, kind, targets, drainMul, angerMul, vibe, line, notice }   tonight only; replaces the same pair
+//   { type: 'onCatch', vibe, patience }          extra reward for catching a sneaker
+//   { type: 'annoyed', friend, n }               starts the night already annoyed
+// Any mutator can also take a condition:
+//   until: 'caught:<id>' | 'clock:<minutes>'     stops once that happens
+//   from: 'clock:<minutes>'                      starts at that time
+//   while: 'together:<id>,<id>'                  only while both are in the lobby
 // ---------------------------------------------------------------------------
-const TWISTS = [
-  { id: 'ranked', text: 'Ranked night. Everyone is tense.', effects: { patienceMul: 1.25, angerMul: 1.2 } },
-  { id: 'parker-ontime', text: "Parker swears he's on time tonight.", effects: { online: { friend: 'parker', window: [3, 12] } } },
-  { id: 'wife-away', text: "Andre's wife is out of town.", effects: { skip: { friend: 'andre', issue: 'movie' } } },
-  { id: 'shaun-maybe', text: 'Shaun said he might hop on.', effects: { online: { friend: 'shaun', window: [15, 70] }, shaunSeconds: [70, 90] } },
-  { id: 'taxes-done', text: 'Nicky B says his taxes are done. Says.', effects: { weight: { friend: 'nickyb', issue: 'taxes', mul: 0.15 } } },
-  { id: 'coffee', text: 'Justin had a coffee at 8pm.', effects: { angerMul: 1.4 } },
-  { id: 'soju', text: 'Matt brought the Soju.', effects: { weight: { friend: 'matt', issue: 'soju', mul: 8 } } },
-  { id: 'offline', text: 'Nicky C is "offline".', effects: { sneakChance: 1 } },
-  { id: 'gummies', text: 'Nicky B found the gummies.', effects: { weight: { friend: 'nickyb', issue: 'baked', mul: 6 } } },
-  { id: 'chill', text: 'Chill night. Allegedly.', effects: { patienceMul: 0.85 } },
-  { id: 'dogs', text: "Andre's dogs have been weird all day.", effects: { weight: { friend: 'andre', issue: 'dogs', mul: 5 } } },
-  { id: 'power', text: "There's a storm by Parker's place.", effects: { weight: { friend: 'parker', issue: 'power', mul: 6 } } },
-  { id: 'plan', text: 'Andre watched a strategy video.', effects: { weight: { friend: 'andre', issue: 'plan', mul: 5 } } },
-  { id: 'random', text: 'Justin has been talking to randoms.', effects: { weight: { friend: 'justin', issue: 'random', mul: 6 } } },
+const WEEK = [   // index = day of the week, 0 = Sunday
+  { day: 'Sunday', theme: 'Chores and family', emoji: '🧺', pool: ['dogs', 'chores', 'scaries', 'movie'] },
+  { day: 'Monday', theme: 'Work tomorrow', emoji: '💼', pool: ['worktomorrow', 'coffee', 'chill', 'taxes-done'] },
+  { day: 'Tuesday', theme: 'Patch day', emoji: '🛠️', pool: ['patch', 'shaun-maybe', 'parker-ontime', 'random'] },
+  { day: 'Wednesday', theme: 'Ranked night', emoji: '🏆', pool: ['ranked', 'plan', 'vote', 'tryhard'] },
+  { day: 'Thursday', theme: 'Thirsty Thursday', emoji: '🍻', pool: ['soju', 'gummies', 'seltzers', 'happyhour'] },
+  { day: 'Friday', theme: "Everyone's out", emoji: '🌃', pool: ['offline', 'wife-away', 'bnc', 'datenight'] },
+  { day: 'Saturday', theme: 'Big night', emoji: '🎉', pool: ['bignight', 'power', 'reunion', 'tournament'] },
+];
+
+const SCENARIOS = [
+  // ---- Sunday: chores and family
+  { id: 'dogs', title: "Andre's dogs have been weird all day.",
+    chips: ['🐕 The dogs will pee. Guaranteed.', '⏱️ Clean-up takes longer', '😤 Andre is on edge'],
+    tip: 'Tip: Calling Andre while he cleans pee adds 5 minutes. It always adds 5 minutes.',
+    lines: { andre: ['the dogs are acting WEIRD boys'] },
+    mutators: [
+      { type: 'force', friend: 'andre', issue: 'dogs', at: [35, 90] },
+      { type: 'issueParam', friend: 'andre', issue: 'dogs', set: { minutes: [16, 26] } },
+      { type: 'patience', friend: 'andre', mul: 1.15 },
+    ] },
+  { id: 'chores', title: 'Nicky C has chores. So many chores.',
+    chips: ['🧹 Nicky C will vanish for chores', '⏱️ Chores take longer', '🕵️ Less sneaking. No time.'],
+    tip: 'Tip: The guilt trip works on chores. It does not work on the goldfish.',
+    lines: { nickyc: ['hey. i have like 4 chores left'] },
+    mutators: [
+      { type: 'force', friend: 'nickyc', issue: 'chores', at: [30, 80] },
+      { type: 'issueParam', friend: 'nickyc', issue: 'chores', set: { minutes: [18, 30] } },
+      { type: 'sneak', chance: 0.2 },
+    ] },
+  { id: 'scaries', title: 'Sunday scaries.',
+    chips: ['😰 Everyone drains faster', '📉 The vibe sinks faster', '⛳ Nicky B probably has tee time'],
+    tip: 'Tip: Nobody wants Monday. Everybody wants one more game.',
+    lines: { nickyb: ['work tomorrow. ugh. one game.'] },
+    mutators: [
+      { type: 'patience', mul: 1.15 },
+      { type: 'vibeDrain', mul: 1.15 },
+      { type: 'weight', friend: 'nickyb', issue: 'tee', mul: 5 },
+    ] },
+  { id: 'movie', title: 'Andre promised his wife a movie.',
+    chips: ['🎬 Andre has a movie deadline', '⏰ And it comes early', '📢 He yells more before he goes'],
+    tip: 'Tip: "Promise just one match" buys 15 minutes. Spend them wisely.',
+    lines: { andre: ['ONE match boys. movie night.'] },
+    mutators: [
+      { type: 'force', friend: 'andre', issue: 'movie', at: [20, 45] },
+      { type: 'issueParam', friend: 'andre', issue: 'movie', set: { minutes: [50, 80] } },
+      { type: 'outburst', mul: 0.8 },
+    ] },
+
+  // ---- Monday: work tomorrow
+  { id: 'worktomorrow', title: 'Everyone has work tomorrow.',
+    chips: ['💼 Patience drains faster', '⏳ Nobody stays ready long', '⛳ Early tee time and movie night are likely'],
+    tip: 'Tip: On Mondays, "one game" means it.',
+    lines: { parker: ['i have a 7am. one game.'] },
+    mutators: [
+      { type: 'patience', mul: 1.3 },
+      { type: 'hold', mul: 0.85 },
+      { type: 'weight', friend: 'nickyb', issue: 'tee', mul: 6 },
+      { type: 'issueParam', friend: 'nickyb', issue: 'tee', set: { minutes: [40, 70] } },
+      { type: 'weight', friend: 'andre', issue: 'movie', mul: 4 },
+      { type: 'issueParam', friend: 'andre', issue: 'movie', set: { minutes: [35, 60] } },
+    ] },
+  { id: 'coffee', title: 'Justin had a coffee at 8pm.',
+    chips: ["☕ Justin's anger rises 40% faster", '⚡ He readies instantly'],
+    tip: 'Tip: Calm Justin early. Coffee does not wear off.',
+    lines: { justin: ['I HAD A COFFEE. LETS GO.'] },
+    mutators: [
+      { type: 'anger', mul: 1.4 },
+      { type: 'readySpeed', friend: 'justin', mul: 0.6 },
+    ] },
+  { id: 'chill', title: 'Chill night. Allegedly.',
+    chips: ['😌 Everyone is more patient', '📢 Fewer outbursts', '🔇 Party chat will probably bug out'],
+    tip: 'Tip: A chill night is just a loud night that has not started yet.',
+    lines: { andre: ['im chill tonight boys. CHILL.'] },
+    mutators: [
+      { type: 'patience', mul: 0.85 },
+      { type: 'outburst', mul: 1.3 },
+      { type: 'event', event: 'chatbug', chance: 0.6 },
+    ] },
+  { id: 'taxes-done', title: 'Nicky B says his taxes are done. Says.',
+    chips: ["📄 Nicky B probably won't do taxes", '⏱️ If he does, it takes forever'],
+    tip: 'Tip: "Hype him up" knocks 12 minutes off taxes. Use it early.',
+    lines: { nickyb: ['taxes are done. dont ask.'] },
+    mutators: [
+      { type: 'weight', friend: 'nickyb', issue: 'taxes', mul: 0.4 },
+      { type: 'issueParam', friend: 'nickyb', issue: 'taxes', set: { minutes: [45, 70] } },
+    ] },
+
+  // ---- Tuesday: patch day
+  { id: 'patch', title: 'Patch Tuesday. Everyone is updating.',
+    chips: ["⬇️ Shaun's update is almost certain", '🛠️ Server maintenance is likely', '🔇 Chat might bug out'],
+    tip: 'Tip: Never tell Shaun to restart the router. Especially on Patch Tuesday.',
+    lines: { justin: ['WHY IS THERE ANOTHER UPDATE'] },
+    mutators: [
+      { type: 'weight', friend: 'shaun', issue: 'update', mul: 20 },
+      { type: 'event', event: 'maintenance', chance: 0.7 },
+      { type: 'event', event: 'chatbug', chance: 0.4 },
+    ] },
+  { id: 'shaun-maybe', title: 'Shaun said he might hop on.',
+    chips: ['👑 Shaun shows up early', '⏳ He waits longer for an invite', '💚 Matt keeps him extra calm'],
+    tip: 'Tip: Get Matt in the lobby before Shaun shows up.',
+    lines: { shaun: ['i said i might. here i am.'] },
+    mutators: [
+      { type: 'online', friend: 'shaun', window: [15, 70] },
+      { type: 'shaun', seconds: [70, 90] },
+      { type: 'chemistry', pair: ['matt', 'shaun'], kind: 'like', targets: ['shaun'], drainMul: 0.4, vibe: 0.25, line: ['matt', 'Hi Shaun'], notice: 'Matt is here. Shaun is very relaxed.' },
+    ] },
+  { id: 'parker-ontime', title: "Parker swears he's on time tonight.",
+    chips: ['⏰ Parker is on early', '🚽 He makes up for it with extra problems'],
+    tip: 'Tip: Parker on time is still Parker.',
+    lines: { parker: ['TOLD YOU. ON TIME.'] },
+    mutators: [
+      { type: 'online', friend: 'parker', window: [3, 12] },
+      { type: 'extraIssues', friend: 'parker', n: 1 },
+    ] },
+  { id: 'random', title: 'Justin has been talking to randoms.',
+    chips: ['🎲 Justin will probably invite a random', '😤 Justin is a little angrier'],
+    tip: "Tip: Justin's random counts as a fifth. Until he breathes into the mic.",
+    lines: { justin: ['i met a guy. hes good.'] },
+    mutators: [
+      { type: 'weight', friend: 'justin', issue: 'random', mul: 6 },
+      { type: 'anger', mul: 1.1 },
+    ] },
+
+  // ---- Wednesday: ranked night
+  { id: 'ranked', title: 'Ranked night. Everyone is tense.',
+    chips: ['😤 Everyone drains faster', '🔥 Justin angers faster', '✅ Once ready, people stay ready longer'],
+    tip: 'Tip: On ranked night, a ready lobby stays ready. Getting there is the hard part.',
+    lines: { andre: ['RANKED. LISTEN TO ME.'] },
+    mutators: [
+      { type: 'patience', mul: 1.25 },
+      { type: 'anger', mul: 1.2 },
+      { type: 'hold', mul: 1.15 },
+    ] },
+  { id: 'plan', title: 'Andre watched a strategy video.',
+    chips: ['🗺️ Andre will have a drop plan', '📢 More outbursts', '⚡ He readies fast'],
+    tip: 'Tip: It is always the dam.',
+    lines: { andre: ['I WATCHED A VIDEO. I HAVE A PLAN.'] },
+    mutators: [
+      { type: 'weight', friend: 'andre', issue: 'plan', mul: 5 },
+      { type: 'outburst', mul: 0.75 },
+      { type: 'readySpeed', friend: 'andre', mul: 0.7 },
+    ] },
+  { id: 'vote', title: 'Justin wants to play a different game.',
+    chips: ['🗳️ Justin will call a vote', '⏱️ You get less time to answer', '😤 He is a little angrier'],
+    tip: 'Tip: Answer the vote. Any answer. Just answer it.',
+    lines: { justin: ['we are playing something else tonight. maybe.'] },
+    mutators: [
+      { type: 'force', friend: 'justin', issue: 'vote', at: [25, 60] },
+      { type: 'issueParam', friend: 'justin', issue: 'vote', set: { seconds: 9 } },
+      { type: 'anger', mul: 1.1 },
+    ] },
+  { id: 'tryhard', title: 'Andre and Justin are both in tryhard mode.',
+    chips: ['⚡ Andre and Justin clash all night', '✅ Everyone stays ready longer'],
+    tip: 'Tip: Two tryhards, one lobby. Keep them both busy.',
+    lines: { justin: ['TRYHARD MODE. NO TALKING.'] },
+    mutators: [
+      { type: 'chemistry', pair: ['andre', 'justin'], kind: 'clash', targets: ['andre', 'justin'], drainMul: 1.3, angerMul: 1.25, line: ['andre', 'JUSTIN. LISTEN TO ME.'], notice: 'Andre and Justin are both tryharding. This will be loud.' },
+      { type: 'hold', mul: 1.2 },
+    ] },
+
+  // ---- Thursday: thirsty Thursday
+  { id: 'soju', title: 'Matt brought the Soju.',
+    chips: ['🍶 Matt will get into the soju', '⏳ Matt stays ready less'],
+    tip: 'Tip: Water. Get Matt water.',
+    lines: { matt: ['Need more soju'] },
+    mutators: [
+      { type: 'force', friend: 'matt', issue: 'soju', at: [35, 80] },
+      { type: 'hold', friend: 'matt', mul: 0.8 },
+    ] },
+  { id: 'gummies', title: 'Nicky B found the gummies.',
+    chips: ['🌀 Nicky B is baked by 10:15', '🐢 He readies 4x slower', '💚 Parker is having a great time with him'],
+    tip: 'Tip: The gummies kick in around 10:15.',
+    lines: { nickyb: ['found these in my car lol'] },
+    visual: { haze: 'rgba(170,90,255,0.16)' },
+    mutators: [
+      { type: 'force', friend: 'nickyb', issue: 'baked', at: [75, 75] },
+      { type: 'issueParam', friend: 'nickyb', issue: 'baked', set: { readyMul: 4, minutes: [70, 110] } },
+      { type: 'chemistry', pair: ['nickyb', 'parker'], kind: 'like', targets: ['nickyb', 'parker'], drainMul: 0.6, vibe: 0.2, line: ['parker', 'NICKY B. you good bro?'], notice: 'Nicky B and Parker are on the same wavelength tonight.' },
+    ] },
+  { id: 'seltzers', title: 'Parker is on a seltzer run. Again.',
+    chips: ["🛒 Parker's seltzer run is guaranteed", '⏱️ It takes even longer', "⏰ But he's on early"],
+    tip: 'Tip: Venmo him. Do not ask for one.',
+    lines: { parker: ['quick seltzer run first'] },
+    mutators: [
+      { type: 'online', friend: 'parker', window: [5, 20] },
+      { type: 'force', friend: 'parker', issue: 'seltzers', at: [20, 50] },
+      { type: 'issueParam', friend: 'parker', issue: 'seltzers', set: { minutes: [25, 30] } },
+    ] },
+  { id: 'happyhour', title: 'Happy hour ran long.',
+    chips: ['🍻 Everyone shows up 20 minutes late', "😌 But they're more patient", '🐢 And slower to ready'],
+    tip: 'Tip: Happy hour people are patient people. Slow, but patient.',
+    lines: { andre: ['BOYS. happy hour. BOYS.'] },
+    visual: { haze: 'rgba(255,170,60,0.12)' },
+    mutators: [
+      { type: 'onlineShift', minutes: 20 },
+      { type: 'patience', mul: 0.9 },
+      { type: 'outburst', mul: 0.85 },
+      { type: 'readySpeed', mul: 1.2 },
+    ] },
+
+  // ---- Friday: everyone's out
+  { id: 'offline', title: 'Nicky C is "offline".',
+    chips: ['🕵️ Nicky C is definitely sneaking', '😤 Justin is angrier until you catch him', '🎉 Catching him lifts the vibe'],
+    tip: 'Tip: Nicky C is not offline. Check his profile.',
+    lines: { andre: ['IS NICKY C IN ANOTHER PARTY'] },
+    mutators: [
+      { type: 'sneak', chance: 1, suspicionMinutes: 25 },
+      { type: 'anger', mul: 1.3, until: 'caught:nickyc' },
+      { type: 'onCatch', vibe: 15, patience: 10 },
+    ] },
+  { id: 'wife-away', title: "Andre's wife is out of town.",
+    chips: ['🎬 No movie deadline for Andre', "😌 He's more patient", '📢 And louder'],
+    tip: 'Tip: No wife, no movie, no limits. Say "I\'m listening" a lot.',
+    lines: { andre: ['wife is gone. ALL NIGHT BOYS.'] },
+    mutators: [
+      { type: 'skip', friend: 'andre', issue: 'movie' },
+      { type: 'patience', friend: 'andre', mul: 0.75 },
+      { type: 'outburst', mul: 0.8 },
+    ] },
+  { id: 'bnc', title: "Parker's BNC is home.",
+    chips: ['⛓️ Parker will probably have BNC issues', '⏱️ Long ones'],
+    tip: "Tip: BNC issues can't be fixed. They can be made worse. Don't call.",
+    lines: { parker: ['shes home. this could go either way.'] },
+    mutators: [
+      { type: 'weight', friend: 'parker', issue: 'bnc', mul: 6 },
+      { type: 'issueParam', friend: 'parker', issue: 'bnc', set: { minutes: [20, 40] } },
+    ] },
+  { id: 'datenight', title: "It's date night for half the lobby.",
+    chips: ['🌹 Andre and Parker show up late', '🎬 Movie night is likely', '⏳ Nobody stays ready long'],
+    tip: 'Tip: Fill the lobby with whoever is home. The romantics come later.',
+    lines: { parker: ['ok dinner is over. im here.'] },
+    mutators: [
+      { type: 'onlineShift', friend: 'andre', minutes: 30 },
+      { type: 'onlineShift', friend: 'parker', minutes: 30 },
+      { type: 'weight', friend: 'andre', issue: 'movie', mul: 4 },
+      { type: 'hold', mul: 0.9 },
+    ] },
+
+  // ---- Saturday: big night
+  { id: 'bignight', title: 'Saturday. Everyone is on.',
+    chips: ['🎉 Everyone comes online early', '📢 Andre is louder', '⭐ Double XP is likely'],
+    tip: 'Tip: Everyone is on. That is the problem.',
+    lines: { andre: ['SATURDAY BOYS'] },
+    mutators: [
+      { type: 'onlineShift', minutes: -20 },
+      { type: 'outburst', mul: 0.8 },
+      { type: 'vibeDrain', mul: 0.9 },
+      { type: 'event', event: 'doublexp', chance: 0.6 },
+    ] },
+  { id: 'power', title: "There's a storm by Parker's place.",
+    chips: ["⛈️ Parker's power will probably go out", '📶 His Wi-Fi is shaky too'],
+    tip: 'Tip: When the lights flicker at Parker\'s, invite someone else.',
+    lines: { parker: ['lights are flickering lol'] },
+    visual: { rain: true, lightning: true },
+    mutators: [
+      { type: 'weight', friend: 'parker', issue: 'power', mul: 6 },
+      { type: 'weight', friend: 'parker', issue: 'wifi', mul: 3 },
+    ] },
+  { id: 'reunion', title: 'Shaun is back for the weekend.',
+    chips: ['👑 Shaun shows up early', '⏳ He waits longer for an invite', "😌 He's more patient than usual"],
+    tip: 'Tip: Shaun is back. Do not blow it. Again.',
+    lines: { shaun: ['im back for the weekend'] },
+    mutators: [
+      { type: 'online', friend: 'shaun', window: [10, 60] },
+      { type: 'shaun', seconds: [90, 120] },
+      { type: 'patience', friend: 'shaun', mul: 0.75 },
+    ] },
+  { id: 'tournament', title: "There's a tournament with a cash prize.",
+    chips: ['💰 Everyone readies faster', '✅ And stays ready longer', '😤 Justin angers faster'],
+    tip: 'Tip: Money makes everyone ready. Money makes Justin loud.',
+    lines: { justin: ['CASH PRIZE. READY UP.'] },
+    mutators: [
+      { type: 'patience', mul: 0.9 },
+      { type: 'anger', mul: 1.25 },
+      { type: 'hold', mul: 1.3 },
+      { type: 'readySpeed', mul: 0.85 },
+    ] },
 ];
 
 const GOLDEN = {
-  chance: 0.05,                           // about 1 in 20 evenings
+  chance: 0.05,                           // about 1 in 20 evenings, on any day
   text: '✨ GOLDEN EVENING ✨ Everyone is on. Everyone is happy. Even Shaun.',
   notice: 'Golden Evening: everyone is on and in a good mood.',
-  patienceMul: 0.55, angerMul: 0.6, outburstMul: 1.7,
-  shaunSeconds: [120, 150],
+  chips: ['✨ Everyone is online from 9pm', '😌 Everyone is extra patient', '👑 Shaun waits a long time'],
+  mutators: [
+    { type: 'online', friend: 'all', window: [0, 0] },
+    { type: 'skip', issueType: 'sneak' }, { type: 'skip', issueType: 'late' },
+    { type: 'patience', mul: 0.55 }, { type: 'anger', mul: 0.6 }, { type: 'outburst', mul: 1.7 },
+    { type: 'shaun', seconds: [120, 150] },
+    { type: 'event', event: 'chatbug', chance: 0 },
+  ],
 };
 
 const EVENTS = {

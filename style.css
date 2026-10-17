@@ -320,3 +320,22 @@ button.big.alt:active { box-shadow: 0 2px 0 #1b2140; }
   #menu-result { margin: 5px 0 3px; min-height: 16px; font-size: 12px; }
   #menu-close { padding: 7px; }
 }
+
+/* ---------- tonight's scenario ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 4px 0 2px; }
+.chips:empty { display: none; }
+.chip { font-size: 10.5px; font-weight: 800; line-height: 1.2; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); border-radius: 999px; padding: 3px 8px; color: #e8ebff; }
+.load-night { font-size: 14px; font-weight: 800; color: #fff; margin: 4px 0 2px; }
+.load-night:empty { display: none; }
+.panel.loading .chips { margin-bottom: 10px; }
+.nights-title { font-family: var(--display); font-size: 11px; letter-spacing: 2px; color: var(--dim); margin: 10px 0 3px; }
+.night-day { font-size: 11px; font-weight: 900; color: var(--accent); margin-top: 5px; }
+.night { font-size: 11px; color: var(--dim); padding: 1px 0 1px 4px; }
+.night.on { color: #fff; }
+.night.on::before { content: '🌙 '; }
+.night:not(.on)::before { content: '🔒 '; opacity: .6; }
+@media (max-height: 420px) {
+  .chip { font-size: 9.5px; padding: 2px 7px; }
+  .title-left .twist { margin: 1px 0; }
+  .title-left .chips { margin: 2px 0 0; }
+}
